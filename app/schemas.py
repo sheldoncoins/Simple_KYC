@@ -90,3 +90,38 @@ class RevokeRequest(BaseModel):
 
 class RevokeResponse(BaseModel):
     revoked: bool
+
+
+# --- Admin / review console -------------------------------------------------
+
+
+class ReviewListItem(BaseModel):
+    item_id: int
+    session_id: int
+    reason: str
+    payload: dict
+    country: str | None
+    status: str
+    decision: str | None
+    risk_score: float | None
+    signals: dict
+    created_at: str
+
+
+class AuditEntry(BaseModel):
+    id: int
+    actor: str
+    action: str
+    subject: str | None
+    detail: str | None
+    created_at: str
+
+
+class MetricsSummary(BaseModel):
+    total_sessions: int
+    decided: int
+    decisions: dict[str, int]
+    rates: dict[str, float]
+    dedup_hit_rate: float
+    liveness_pass_rate: float
+    per_country: dict[str, dict[str, int]]

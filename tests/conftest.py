@@ -17,6 +17,7 @@ _tmp = tempfile.mkdtemp()
 os.environ["KYC_DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
 os.environ["KYC_SIGNING_KEY_PATH"] = f"{_tmp}/key.pem"
 os.environ["KYC_P2P_API_KEYS"] = "test-p2p-key,other-key"
+os.environ["KYC_ADMIN_API_KEYS"] = "test-admin-key"
 os.environ["KYC_RATELIMIT_ONBOARD_PER_MIN"] = "1000"
 os.environ["KYC_RATELIMIT_BIOMETRIC_PER_MIN"] = "1000"
 os.environ["KYC_STORAGE_DIR"] = f"{_tmp}/media"
@@ -25,6 +26,7 @@ os.environ.setdefault("KYC_MRZ_READER", "text")
 os.environ.setdefault("KYC_LOG_FORMAT", "console")
 
 P2P_KEY = "test-p2p-key"
+ADMIN_KEY = "test-admin-key"
 
 from app.db import init_db  # noqa: E402
 from app.main import app  # noqa: E402
@@ -40,8 +42,16 @@ def api_key() -> str:
 
 @pytest.fixture
 def client() -> TestClient:
-    """Client that authenticates as a P2P partner on every request."""
-    return TestClient(app, headers={"X-API-Key": P2P_KEY})
+    """Client that authenticates as both a P2P partner and staff."""
+    return TestClient(
+        app, headers={"X-API-Key": P2P_KEY, "X-Admin-Key": ADMIN_KEY}
+    )
+
+
+@pytest.fixture
+def staff_client() -> TestClient:
+    """Client that authenticates as staff only (admin/review endpoints)."""
+    return TestClient(app, headers={"X-Admin-Key": ADMIN_KEY})
 
 
 @pytest.fixture

@@ -41,6 +41,25 @@ def require_p2p_client(
     return x_api_key
 
 
+# --- Staff authentication ---------------------------------------------------
+
+
+def admin_api_keys() -> set[str]:
+    """Configured staff keys for the admin/review console (read live)."""
+    raw = os.environ.get("KYC_ADMIN_API_KEYS", "")
+    return {k.strip() for k in raw.split(",") if k.strip()}
+
+
+def require_staff(
+    x_admin_key: str | None = Header(default=None, alias="X-Admin-Key"),
+) -> str:
+    """FastAPI dependency: allow only staff requests (review/audit/metrics)."""
+    keys = admin_api_keys()
+    if not keys or x_admin_key is None or x_admin_key not in keys:
+        raise HTTPException(status_code=401, detail="invalid_or_missing_admin_key")
+    return x_admin_key
+
+
 # --- Rate limiting ----------------------------------------------------------
 
 _WINDOW_SECONDS = 60

@@ -76,8 +76,8 @@ migrations in `migrations/`.
 
 ## API
 
-Endpoints marked 🔑 require a P2P client API key (`X-API-Key`); see
-`KYC_P2P_API_KEYS` in `.env.example`.
+🔑 = P2P client API key (`X-API-Key`, `KYC_P2P_API_KEYS`); 🛡️ = staff key
+(`X-Admin-Key`, `KYC_ADMIN_API_KEYS`).
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -93,8 +93,10 @@ Endpoints marked 🔑 require a P2P client API key (`X-API-Key`); see
 | POST | `/v1/credentials/revoke` | 🔑 revoke a credential (by `jti` or `identity_hash`) |
 | POST | `/v1/limits/debit` | 🔑 consume limit (idempotent) |
 | GET  | `/v1/limits/{identity_hash}` | 🔑 limit balance |
-| GET  | `/v1/review` | pending manual-review queue |
-| POST | `/v1/review/{item_id}` | resolve a review item |
+| GET  | `/v1/review` | 🛡️ pending manual-review queue (with signals) |
+| POST | `/v1/review/{item_id}` | 🛡️ resolve a review item |
+| GET  | `/v1/audit` | 🛡️ read-only audit log (most recent first) |
+| GET  | `/v1/metrics/summary` | 🛡️ approval/review/reject + dedup/liveness rates, per-country |
 
 ## Verification wizard (web UI)
 
@@ -120,6 +122,7 @@ The API enables CORS for the wizard origin via `KYC_CORS_ORIGINS`.
 | JWKS endpoint + key rotation support | **Real** |
 | Credential revocation (by token or identity) | **Real** |
 | P2P client auth (API key) + rate limiting | **Real** — in-process limiter |
+| Staff auth + review/audit/metrics API | **Real** — `X-Admin-Key`; admin console UI is Phase 5b |
 | Identity-bound limit ledger (idempotent) | **Real** |
 | Risk engine, review queue, audit log | **Real** |
 | Media storage encrypted at rest + retention/purge | **Real** — local AES-256-GCM; purge job deletes expired raw media |
@@ -141,6 +144,6 @@ retention TTL + purge job, and server-side MRZ reading from a passport image
 (deterministic validation unchanged). Still outstanding before real money: a real
 **KMS/HSM** signer (the `KmsSigner` seam — keys must leave disk); production
 object storage on S3/KMS; a real OCR backend; a distributed rate limiter
-(Redis/edge); staff auth on the review/admin endpoints; a full DSAR/deletion flow
-and DPIA; and a legal review of money-transmission/VASP obligations in each
-market. This code does not constitute legal or compliance advice.
+(Redis/edge); a full DSAR/deletion flow and DPIA; and a legal review of
+money-transmission/VASP obligations in each market. This code does not
+constitute legal or compliance advice.

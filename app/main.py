@@ -26,19 +26,23 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
+from app import audit
 from app.config import ACCEPTED_ID_TYPES, policy_for
 from app.db import get_session, init_db
 from app.logging_config import configure_logging, get_logger
 from app.models import SessionStatus
 from app.providers.registry import mrz_reader, signer, task_queue
 from app.schemas import (
+    AuditEntry,
     BiometricSubmission,
     CredentialResponse,
     DebitRequest,
     DocumentSubmission,
     LedgerResponse,
+    MetricsSummary,
     OnboardRequest,
     OnboardResponse,
+    ReviewListItem,
     ReviewResolution,
     RevokeRequest,
     RevokeResponse,
@@ -46,12 +50,13 @@ from app.schemas import (
     VerifyCredentialRequest,
     VerifyCredentialResponse,
 )
-from app.security import rate_limit, require_p2p_client
+from app.security import rate_limit, require_p2p_client, require_staff
 from app.services import (
     credentials,
     ledger,
     liveness,
     media,
+    metrics,
     review,
     revocation,
     verification,
@@ -273,13 +278,31 @@ def limit_balance(identity_hash: str, db: Session = Depends(get_session),
     return LedgerResponse(**bal.__dict__)
 
 
-@app.get("/v1/review")
+@app.get("/v1/review", response_model=list[ReviewListItem],
+         dependencies=[Depends(require_staff)])
 def review_queue(db: Session = Depends(get_session)):
-    return [{"item_id": i.id, "session_id": i.session_id, "reason": i.reason,
-             "payload": i.payload} for i in review.pending(db)]
+    """Pending manual-review queue with the session signals a reviewer needs to
+    decide side-by-side. Staff only."""
+    from app.models import User, VerificationSession
+    out: list[ReviewListItem] = []
+    for item in review.pending(db):
+        sess = db.get(VerificationSession, item.session_id)
+        user = db.get(User, sess.user_id) if sess else None
+        out.append(ReviewListItem(
+            item_id=item.id, session_id=item.session_id, reason=item.reason,
+            payload=item.payload,
+            country=user.country if user else None,
+            status=sess.status.value if sess else "",
+            decision=sess.decision.value if sess and sess.decision else None,
+            risk_score=sess.risk_score if sess else None,
+            signals=_safe_signals(sess.signals) if sess else {},
+            created_at=item.created_at.isoformat(),
+        ))
+    return out
 
 
-@app.post("/v1/review/{item_id}", response_model=StatusResponse)
+@app.post("/v1/review/{item_id}", response_model=StatusResponse,
+          dependencies=[Depends(require_staff)])
 def resolve_review(item_id: int, res: ReviewResolution,
                    db: Session = Depends(get_session)):
     try:
@@ -289,10 +312,35 @@ def resolve_review(item_id: int, res: ReviewResolution,
     return _status(sess)
 
 
+@app.get("/v1/audit", response_model=list[AuditEntry],
+         dependencies=[Depends(require_staff)])
+def audit_log(limit: int = 50, offset: int = 0,
+              db: Session = Depends(get_session)):
+    """Read-only audit log viewer (most recent first). Staff only."""
+    return [
+        AuditEntry(id=a.id, actor=a.actor, action=a.action, subject=a.subject,
+                   detail=a.detail, created_at=a.created_at.isoformat())
+        for a in audit.recent(db, limit=min(max(limit, 1), 200), offset=max(offset, 0))
+    ]
+
+
+@app.get("/v1/metrics/summary", response_model=MetricsSummary,
+         dependencies=[Depends(require_staff)])
+def metrics_summary(db: Session = Depends(get_session)):
+    """Approval/review/reject rates, dedup hit rate, liveness pass rate, and a
+    per-country breakdown. Staff only."""
+    return metrics.summary(db)
+
+
+def _safe_signals(signals: dict) -> dict:
+    """Drop the raw biometric embedding before exposing signals over the API."""
+    return {k: v for k, v in (signals or {}).items() if k != "embedding"}
+
+
 def _status(sess) -> StatusResponse:
     return StatusResponse(
         session_id=sess.id, status=sess.status.value,
         decision=sess.decision.value if sess.decision else None,
         risk_score=sess.risk_score, reject_reason=sess.reject_reason,
-        signals={k: v for k, v in sess.signals.items() if k != "embedding"},
+        signals=_safe_signals(sess.signals),
     )

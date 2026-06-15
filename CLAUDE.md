@@ -84,13 +84,13 @@ app/
   schemas.py       Pydantic request/response
   crypto.py        Ed25519 key load + PII hashing (key handling wrapped by Signer)
   audit.py         append-only audit log + structured log mirror
-  security.py      P2P API-key auth + in-process rate limiter
+  security.py      P2P (X-API-Key) + staff (X-Admin-Key) auth + rate limiter
   logging_config.py structlog setup
   main.py          FastAPI routes (/v1/..., JWKS at /.well-known/jwks.json)
   providers/       FaceMatcher + Signer + ObjectStorage + MrzReader + DedupIndex
                    interfaces, mocks/local fallbacks + registry (swap point)
   services/        mrz, liveness, dedup, risk, credentials, ledger, review,
-                   revocation, media, retention, verification (orchestrator)
+                   revocation, media, retention, metrics, verification (orchestrator)
   jobs/            purge_media (retention deletion job)
   worker.py        arq background worker (biometric decision off the request path)
 migrations/        Alembic env + versioned schema (owns the schema in prod)

@@ -17,10 +17,11 @@ from fastapi.testclient import TestClient
 
 from tests._helpers import frames_for, run_flow
 
-# Authenticated client: the limit/credential endpoints now require the P2P key
-# (configured in conftest via KYC_P2P_API_KEYS).
+# Authenticated client: P2P key for limit/credential endpoints and the admin key
+# for the review queue (both configured in conftest).
 _KEY = os.environ["KYC_P2P_API_KEYS"].split(",")[0]
-client = TestClient(app, headers={"X-API-Key": _KEY})
+_ADMIN = os.environ["KYC_ADMIN_API_KEYS"].split(",")[0]
+client = TestClient(app, headers={"X-API-Key": _KEY, "X-Admin-Key": _ADMIN})
 
 
 def _flow(wallet, country, seed, selfie_seed=None, good=True):

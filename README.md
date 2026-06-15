@@ -46,12 +46,16 @@ countries and near-duplicates (e.g. twins) go to review.
 
 ## Run it
 
-### Docker (Postgres + API)
+### Docker (full stack)
 
 ```bash
-docker compose up --build          # Postgres + API; runs migrations on start
-                                   # API at http://localhost:8000/docs
+docker compose up --build          # postgres, redis, api, worker, web, prometheus
+                                   # API http://localhost:8000/docs · wizard :3000
+                                   # Prometheus :9090 · API runs migrations on start
 ```
+
+Kubernetes manifests, Prometheus scrape/alert rules, and image build steps are in
+[`deploy/`](deploy/README.md).
 
 ### Local (Python)
 

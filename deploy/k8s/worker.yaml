@@ -1,0 +1,24 @@
+# Background worker: runs the biometric decision off the request path (arq).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kyc-worker
+  namespace: kyc
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: kyc-worker }
+  template:
+    metadata:
+      labels: { app: kyc-worker }
+    spec:
+      containers:
+        - name: worker
+          image: kyc-server:latest
+          command: ["arq", "app.worker.WorkerSettings"]
+          envFrom:
+            - configMapRef: { name: kyc-config }
+            - secretRef: { name: kyc-secrets }
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { cpu: "1", memory: "1Gi" }

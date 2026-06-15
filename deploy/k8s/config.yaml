@@ -1,0 +1,30 @@
+# Non-secret configuration. Secrets (salt, storage key, API keys, DB password)
+# go in the Secret below -- replace the placeholder values, ideally from an
+# external secret manager (do NOT commit real secrets).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kyc-config
+  namespace: kyc
+data:
+  KYC_DATABASE_URL: postgresql+psycopg://kyc:kyc@postgres:5432/kyc
+  KYC_REDIS_URL: redis://redis:6379
+  KYC_TASK_QUEUE: arq
+  KYC_STORAGE_BACKEND: s3
+  KYC_DEDUP_BACKEND: pgvector
+  KYC_LOG_FORMAT: json
+  KYC_CORS_ORIGINS: https://verify.example.com
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kyc-secrets
+  namespace: kyc
+type: Opaque
+stringData:
+  # Replace every value. These are placeholders for a working scaffold only.
+  KYC_PII_SALT: replace-me
+  KYC_STORAGE_KEY: replace-with-base64-32-bytes
+  KYC_P2P_API_KEYS: replace-with-p2p-keys
+  KYC_ADMIN_API_KEYS: replace-with-admin-keys
+  POSTGRES_PASSWORD: kyc

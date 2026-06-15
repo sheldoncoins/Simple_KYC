@@ -61,5 +61,26 @@ services:
       redis:
         condition: service_healthy
 
+  web:
+    build:
+      context: ./web
+      args:
+        # Baked into the client bundle at build time (browser -> API).
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    depends_on:
+      - api
+
 volumes:
   kyc_pgdata:

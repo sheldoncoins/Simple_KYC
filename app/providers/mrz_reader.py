@@ -16,6 +16,9 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
+
+from app.services.mrz import validate_td3
 
 
 class MrzReader(ABC):
@@ -73,23 +76,101 @@ def _reconstruct_td3(d: dict) -> tuple[str, str]:
     return line1, line2[:44].ljust(44, "<")
 
 
+def _is_valid(pair: tuple[str, str]) -> bool:
+    """Does this read pass the ICAO 9303 check digits? (The same deterministic
+    validation the service applies downstream -- used here only to *choose* among
+    candidate reads.)"""
+    return validate_td3(pair[0], pair[1]).valid
+
+
+def _choose_mrz(
+    candidates: Sequence[tuple[str, str] | None],
+) -> tuple[str, str] | None:
+    """Pick the best read from a list of candidates (in priority order).
+
+    Prefers the first candidate whose check digits validate; if none validate,
+    returns the first candidate that read anything at all (so downstream
+    validation still reports a meaningful failure on the raw read); if nothing
+    read, returns None. This is what makes preprocessing strictly additive: the
+    raw read is always a candidate, so a preprocessed result can only *win* by
+    validating where the raw read did not -- it can never displace a read that
+    already works."""
+    reads = [c for c in candidates if c is not None]
+    for c in reads:
+        if _is_valid(c):
+            return c
+    return reads[0] if reads else None
+
+
 class PassportEyeMrzReader(MrzReader):  # pragma: no cover - needs the OCR stack
-    """Real OCR via PassportEye + Tesseract. Production seam, not run in CI."""
+    """Real OCR via PassportEye + Tesseract. Production seam, not run in CI.
+
+    Reads the raw image first; only if that doesn't yield a check-digit-valid MRZ
+    does it retry on preprocessed (grayscale/binarized) variants and take the
+    first that validates -- which removes colour security tints and lifts text
+    contrast without ever regressing an image the raw read already handled."""
 
     def read(self, image: bytes) -> tuple[str, str]:
         try:
-            import tempfile
-
-            from passporteye import read_mrz
+            import passporteye  # noqa: F401
         except ImportError as exc:  # noqa: TRY003
             raise RuntimeError(
                 "PassportEyeMrzReader needs passporteye + tesseract; install them "
                 "or use KYC_MRZ_READER=text."
             ) from exc
+
+        raw = self._read_one(image)
+        if raw is not None and _is_valid(raw):
+            return raw  # clean read -- skip preprocessing entirely (the common case)
+
+        # Raw read failed or didn't validate: try preprocessed variants. The raw
+        # read stays in the candidate list, so _choose_mrz falls back to it when
+        # nothing validates -> behaviour is never worse than today.
+        candidates: list[tuple[str, str] | None] = [raw]
+        candidates += [self._read_one(v) for v in self._preprocess_variants(image)]
+        chosen = _choose_mrz(candidates)
+        if chosen is None:
+            raise ValueError("OCR could not locate an MRZ in the image")
+        return chosen
+
+    def _read_one(self, image: bytes) -> tuple[str, str] | None:
+        """Run PassportEye/Tesseract on one image; None if no MRZ is located."""
+        import tempfile
+
+        from passporteye import read_mrz
+
         with tempfile.NamedTemporaryFile(suffix=_image_suffix(image)) as fh:
             fh.write(image)
             fh.flush()
             mrz = read_mrz(fh.name)
         if mrz is None:
-            raise ValueError("OCR could not locate an MRZ in the image")
+            return None
         return _reconstruct_td3(mrz.to_dict())
+
+    def _preprocess_variants(self, image: bytes) -> list[bytes]:
+        """Grayscale/binarized renderings that help OCR on tinted or low-contrast
+        scans (e.g. the blue security ghost-image over an Indian passport's MRZ).
+        Returns PNG bytes (lossless). Empty if OpenCV is unavailable or the image
+        can't be decoded -- in which case read() just uses the raw read."""
+        try:
+            import cv2
+            import numpy as np
+        except ImportError:
+            return []
+        frame = cv2.imdecode(np.frombuffer(image, np.uint8), cv2.IMREAD_COLOR)
+        if frame is None:
+            return []
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Otsu drops a uniform colour tint; CLAHE first lifts local contrast for
+        # uneven lighting/glare. Plain grayscale is the gentlest fallback.
+        _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+        _, clahe_otsu = cv2.threshold(
+            clahe, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        out: list[bytes] = []
+        for img in (gray, otsu, clahe_otsu):
+            ok, buf = cv2.imencode(".png", img)
+            if ok:
+                out.append(buf.tobytes())
+        return out

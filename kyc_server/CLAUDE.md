@@ -1,0 +1,103 @@
+# CLAUDE.md
+
+Project memory for Claude Code. Read this before making changes.
+
+## What this is
+
+A centralized KYC verification service for a **P2P USDC↔fiat protocol**. It
+verifies users, blocks multi-accounting (Sybil resistance), and grants each
+**unique human** up to **$100** of USDC→fiat conversion. The P2P layer receives
+a short-lived signed credential — **never** the user's PII.
+
+The current repo is a **tested reference backend** (FastAPI + SQLAlchemy,
+`python -m pytest tests/` is green). The job now is to harden it for production
+and build the UI. See `BUILD_PLAN.md` for the phased roadmap.
+
+## Hard scope decisions (do not silently revisit)
+
+- **Passport only.** No local government IDs, no government-rail lookups.
+  Passport integrity = ICAO 9303 MRZ check digits (`app/services/mrz.py`).
+- **Self-built liveness.** Active challenge-response (`app/services/liveness.py`):
+  randomized action sequence + single-use nonce. Landmark extraction runs on a
+  self-hosted open-source model (MediaPipe Face Mesh / dlib) — **prefer running
+  it client-side in the browser (MediaPipe Tasks WASM)** so raw video can stay
+  off the server. No paid liveness vendor.
+- **No sanctions/PEP screening.** Removed by product decision. `VE` (Venezuela)
+  still routes to manual review on risk grounds.
+- **Face embedding is the one swappable model** (`app/providers/face.py`,
+  `FaceMatcher` interface). Back it with self-hosted InsightFace/ArcFace or a
+  cloud face API. The mock is deterministic-by-seed for tests.
+
+## The one idea everything protects
+
+The **1:N biometric dedup** (`app/services/dedup.py`) is the Sybil gate.
+Documents and phones are cheap to replace; the face is not. The $100 limit is
+bound to the **identity**, not the wallet (`app/services/ledger.py`), so a new
+keypair cannot reset it. Never let a code change make the limit wallet-scoped.
+
+## Pipeline (matches the product flow)
+
+```
+onboard → passport MRZ → selfie + liveness → 1:1 face match
+        → 1:N dedup → risk decision → identity + Ed25519 credential
+```
+
+Hard gates (MRZ, liveness, 1:1 match, dedup-reject) fire before the weighted
+risk score in `app/services/risk.py`. Near-duplicates (twins) and high-risk
+countries go to the manual review queue.
+
+## Markets
+
+India, Nigeria, Brazil, Mexico, Colombia, Argentina, Venezuela
+(`app/config.py: COUNTRY_REGISTRY`). VE is `high_risk=True`.
+
+## Layout
+
+```
+app/
+  config.py        policy, thresholds, country registry
+  db.py            SQLAlchemy engine/session  (SQLite now → Postgres in prod)
+  models.py        ORM: User, IdentityRecord, VerificationSession, LedgerEntry,
+                   ReviewItem, AuditLog
+  schemas.py       Pydantic request/response
+  crypto.py        Ed25519 key mgmt + PII hashing  (file key now → KMS in prod)
+  audit.py         append-only audit log
+  main.py          FastAPI routes (/v1/...)
+  providers/       FaceMatcher interface + mock + registry (swap point)
+  services/        mrz, liveness, dedup, risk, credentials, ledger, review,
+                   verification (orchestrator)
+tests/test_flow.py end-to-end suite
+run_demo.py        narrated no-HTTP demo
+```
+
+## Conventions (match existing style)
+
+- Python 3.12, type hints everywhere, `from __future__ import annotations`.
+- SQLAlchemy 2.0 mapped-style models.
+- Docstrings explain **why**, in prose, not just what.
+- New vendor-replaceable capabilities go behind an interface in `providers/`,
+  never inline in services.
+- Append-only `audit.record(...)` for any state-changing action.
+- Tests must stay green; add a test for every new decision path.
+
+## Commands
+
+```bash
+pip install -r requirements.txt
+python -m pytest tests/ -v        # full suite
+python run_demo.py                # narrated flow
+uvicorn app.main:app --reload     # API at /docs
+```
+
+## Guardrails for changes
+
+- Do **not** describe the system as production-ready until the `BUILD_PLAN.md`
+  hardening phase is done (KMS, Postgres, auth, rate limiting, encrypted
+  storage, retention).
+- Biometric storage triggers data-protection law (DPDP / LGPD / NDPA);
+  any feature touching templates must respect encryption-at-rest +
+  retention/deletion. Don't add a feature that stores raw selfies indefinitely.
+- The Venezuela + USDC/OFAC question is **legal**, handled outside this code.
+  Don't add sanctions logic without an explicit instruction.
+- The face matcher and liveness landmark extraction are the only places real ML
+  belongs. Don't fake them as "done" — keep the interface honest.

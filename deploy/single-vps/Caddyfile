@@ -1,0 +1,22 @@
+# Caddy terminates TLS (automatic Let's Encrypt for $KYC_DOMAIN) and routes the
+# wizard + API on one origin -- so the browser makes same-origin calls and the
+# liveness camera runs in a secure (HTTPS) context, which getUserMedia requires.
+{
+	email {$ACME_EMAIL}
+}
+
+{$KYC_DOMAIN} {
+	encode gzip
+
+	# API surface (same origin as the wizard -> no CORS juggling). /metrics is
+	# deliberately NOT exposed here -- scrape it over the internal network only.
+	@api path /v1/* /.well-known/jwks.json /healthz /readyz
+	handle @api {
+		reverse_proxy api:8000
+	}
+
+	# Everything else -> the Next.js wizard.
+	handle {
+		reverse_proxy web:3000
+	}
+}

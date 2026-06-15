@@ -1,0 +1,35 @@
+# Production API/worker image for the single-VPS stack: the base runtime PLUS
+# real MRZ OCR (Tesseract/PassportEye) and real 1:1 face matching
+# (InsightFace/ArcFace). The default top-level Dockerfile ships neither, so this
+# variant installs the system + Python deps those seams need.
+#
+# Build context is the repo root: `dockerfile: deploy/single-vps/Dockerfile.api`.
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Runtime system deps: tesseract (MRZ OCR) + libGL/glib (OpenCV, used by the
+# OCR preprocessing and InsightFace).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      tesseract-ocr libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Build deps are needed to compile some ML wheels; purge them after install to
+# keep the image lean.
+COPY requirements.txt requirements-ocr.txt requirements-face.txt ./
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+    && pip install --no-cache-dir \
+         -r requirements.txt -r requirements-ocr.txt -r requirements-face.txt \
+    && apt-get purge -y build-essential && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY alembic.ini ./
+COPY migrations ./migrations
+COPY app ./app
+
+EXPOSE 8000
+# api runs migrations then serves; the worker overrides this with `arq ...`.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]

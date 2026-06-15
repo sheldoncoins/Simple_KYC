@@ -225,6 +225,16 @@ external KMS or a self-hosted HashiCorp Vault (Transit engine) — see
 `docker compose up` + **UMem Redis** + **UDB Postgres** + **US3** works. Not for
 real funds (in-process rate limiter + dev signer).
 
+### Single-VPS stack (one box, all-in-one)
+
+For a single-server deployment — everything (api, worker, web, Postgres+pgvector,
+Redis) on one VPS behind **Caddy with automatic HTTPS** — use
+[`deploy/single-vps/`](deploy/single-vps/README.md): a turnkey
+`docker compose up -d --build` stack with a production image (real OCR + face
+match baked in), encrypted local media + hourly purge, and same-origin routing
+so the liveness camera runs in a secure context. It uses the on-disk signer
+(`KYC_SIGNER=local`) — move to KMS before real funds.
+
 ### Deploy steps
 
 1. **Provision** RDS (PG16 + `vector` extension), ElastiCache, an S3 bucket with

@@ -61,6 +61,11 @@ Documents and phones are cheap to replace; the face is not. The $100 limit is
 bound to the **identity**, not the wallet (`app/services/ledger.py`), so a new
 keypair cannot reset it. Never let a code change make the limit wallet-scoped.
 
+Dedup thresholds live in the face matcher's cosine space, so they adapt to the
+active matcher (`config.dedup_thresholds()`): mock 0.92/0.86, InsightFace/ArcFace
+0.55/0.40 (override via `KYC_DEDUP_REJECT_COSINE`/`_REVIEW_COSINE`). Switching to
+a real matcher must not silently disable the gate -- keep the defaults calibrated.
+
 ## Pipeline (matches the product flow)
 
 ```

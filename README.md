@@ -178,6 +178,53 @@ CPU-heavy work is the InsightFace embedding on the **worker**; scale worker
 replicas independently (GPU optional for throughput). pgvector's HNSW index
 carries 1:N dedup to millions of identities on a single primary.
 
+### On SurferCloud (UK8S + US3 + UMem)
+
+SurferCloud has the full stack with a **Mumbai** region. Map the components to
+its products, then follow the [deploy steps](#deploy-steps) below with the noted
+deltas:
+
+| Need | SurferCloud product | Env / file |
+|---|---|---|
+| Containers (api, worker, web) | **UK8S** (managed Kubernetes) | `deploy/k8s/*` apply as-is |
+| Object storage (encrypted media) | **US3** (S3-compatible) | `KYC_STORAGE_BACKEND=s3`, `KYC_S3_BUCKET`, `KYC_S3_ENDPOINT_URL` |
+| Redis (queue) | **UMem Redis** | `KYC_REDIS_URL`, `KYC_TASK_QUEUE=arq` |
+| Postgres + pgvector | **UDB PostgreSQL** if `vector` is whitelisted, else self-host | `KYC_DATABASE_URL`, `KYC_DEDUP_BACKEND=pgvector` |
+| Load balancer / ingress | **ULB** + UK8S ingress | `deploy/k8s/ingress.yaml` |
+| Image registry | **UHub** (or Docker Hub) | — |
+| Region | **Mumbai** | data residency |
+
+**US3 (object storage).** US3 speaks the S3 API, so the built-in `S3Storage`
+backend works against it unchanged — just point boto3 at the US3 endpoint:
+
+```bash
+KYC_STORAGE_BACKEND=s3
+KYC_S3_BUCKET=<your-us3-bucket>
+KYC_S3_ENDPOINT_URL=<US3 Mumbai endpoint>     # e.g. https://<region>.ufileos.com
+AWS_ACCESS_KEY_ID=<US3 access key>            # US3 S3-compatible credentials
+AWS_SECRET_ACCESS_KEY=<US3 secret key>
+```
+
+**pgvector.** The dedup gate needs the `vector` extension. On a UDB PostgreSQL
+instance, check availability first:
+
+```sql
+SELECT * FROM pg_available_extensions WHERE name = 'vector';
+```
+
+If present → `CREATE EXTENSION vector;` and set `KYC_DEDUP_BACKEND=pgvector`. If
+it isn't whitelisted, run **self-managed Postgres + pgvector** instead
+(CloudNativePG on UK8S with a `pgvector/pgvector:pg16` image, or a UHost VM with
+`CREATE EXTENSION vector`); only `KYC_DATABASE_URL` changes — the app is identical.
+
+**Signing keys.** SurferCloud has no managed KMS, so `KYC_SIGNER=kms` needs an
+external KMS or a self-hosted HashiCorp Vault (Transit engine) — see
+[Before real money](#before-real-money). Don't ship the on-disk dev signer.
+
+**Pilot shortcut.** To get live fast, skip UK8S: one **UHost** VM running
+`docker compose up` + **UMem Redis** + **UDB Postgres** + **US3** works. Not for
+real funds (in-process rate limiter + dev signer).
+
 ### Deploy steps
 
 1. **Provision** RDS (PG16 + `vector` extension), ElastiCache, an S3 bucket with

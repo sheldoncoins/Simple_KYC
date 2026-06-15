@@ -44,7 +44,9 @@ and build the UI. See `BUILD_PLAN.md` for the phased roadmap.
   derived templates persist. MRZ *validation* stays deterministic regardless of
   how the lines were read.
 - **The dedup search backend is pluggable** (`app/providers/dedup_index.py`):
-  `LinearScanIndex` (default) or `PgVectorIndex` (`KYC_DEDUP_BACKEND=pgvector`).
+  `LinearScanIndex` (default, fine to ~tens of thousands) or `PgVectorIndex`
+  (`KYC_DEDUP_BACKEND=pgvector`), which uses an **HNSW** index for sublinear 1:N
+  search at millions of identities (auto-dimensioned; recall via `KYC_HNSW_EF_SEARCH`).
   The reject/review thresholds and twin handling in `services/dedup.py` are
   identical across backends -- only the nearest-neighbour search changes. New
   enrollments call `dedup.index_identity(...)` (a no-op for linear).

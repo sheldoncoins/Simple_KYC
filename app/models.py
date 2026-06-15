@@ -153,3 +153,16 @@ class AuditLog(Base):
     subject: Mapped[str | None] = mapped_column(String(128), index=True)
     detail: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
+
+
+class RevokedCredential(Base):
+    """Credential revocation list. Credentials are short-lived, so this only has
+    to outlast the TTL; a row revokes either a single token (by ``jti``) or every
+    credential for an identity (by ``identity_hash``). Verification checks here."""
+    __tablename__ = "revoked_credentials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    jti: Mapped[str | None] = mapped_column(String(64), index=True)
+    identity_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    reason: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)

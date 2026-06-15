@@ -24,9 +24,13 @@ and build the UI. See `BUILD_PLAN.md` for the phased roadmap.
   off the server. No paid liveness vendor.
 - **No sanctions/PEP screening.** Removed by product decision. `VE` (Venezuela)
   still routes to manual review on risk grounds.
-- **Face embedding is the one swappable model** (`app/providers/face.py`,
+- **Face embedding is a swappable model** (`app/providers/face.py`,
   `FaceMatcher` interface). Back it with self-hosted InsightFace/ArcFace or a
   cloud face API. The mock is deterministic-by-seed for tests.
+- **Credential signing is swappable too** (`app/providers/signer.py`, `Signer`
+  interface). `LocalEd25519Signer` is the dev fallback; `KmsSigner` is the
+  production seam (`KYC_SIGNER=kms`) and is intentionally unimplemented -- don't
+  fake it. Tokens carry a `kid`; public keys are served at `/.well-known/jwks.json`.
 
 ## The one idea everything protects
 
@@ -56,19 +60,21 @@ India, Nigeria, Brazil, Mexico, Colombia, Argentina, Venezuela
 ```
 app/
   config.py        policy, thresholds, country registry
-  db.py            SQLAlchemy engine/session  (Postgres via psycopg; SQLite for dev/tests)
+  db.py            SQLAlchemy engine/session (Postgres via psycopg; SQLite for dev/tests)
+  models.py        ORM: User, IdentityRecord, VerificationSession, LedgerEntry,
+                   ReviewItem, AuditLog, RevokedCredential
+  schemas.py       Pydantic request/response
+  crypto.py        Ed25519 key load + PII hashing (key handling wrapped by Signer)
+  audit.py         append-only audit log + structured log mirror
+  security.py      P2P API-key auth + in-process rate limiter
+  logging_config.py structlog setup
+  main.py          FastAPI routes (/v1/..., JWKS at /.well-known/jwks.json)
+  providers/       FaceMatcher + Signer interfaces + mocks + registry (swap point)
+  services/        mrz, liveness, dedup, risk, credentials, ledger, review,
+                   revocation, verification (orchestrator)
 migrations/        Alembic env + versioned schema (owns the schema in prod)
 Dockerfile, docker-compose.yml   local dev stack: api + postgres
-  models.py        ORM: User, IdentityRecord, VerificationSession, LedgerEntry,
-                   ReviewItem, AuditLog
-  schemas.py       Pydantic request/response
-  crypto.py        Ed25519 key mgmt + PII hashing  (file key now → KMS in prod)
-  audit.py         append-only audit log
-  main.py          FastAPI routes (/v1/...)
-  providers/       FaceMatcher interface + mock + registry (swap point)
-  services/        mrz, liveness, dedup, risk, credentials, ledger, review,
-                   verification (orchestrator)
-tests/test_flow.py end-to-end suite
+tests/             pytest suite (conftest + _helpers shared)
 run_demo.py        narrated no-HTTP demo
 ```
 

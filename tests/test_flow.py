@@ -8,54 +8,23 @@ review queue for high-risk countries.
 from __future__ import annotations
 
 import os
-import tempfile
 
 import pytest
+from app.main import app
+from app.services import liveness
+from app.services.mrz_demo import make_mrz
+from fastapi.testclient import TestClient
 
-# Isolated DB + keys per test run.
-_tmp = tempfile.mkdtemp()
-os.environ["KYC_DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
-os.environ["KYC_SIGNING_KEY_PATH"] = f"{_tmp}/key.pem"
+from tests._helpers import frames_for, run_flow
 
-from app.db import init_db  # noqa: E402
-from app.main import app  # noqa: E402
-from app.services import liveness  # noqa: E402
-from app.services.mrz_demo import make_mrz  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-
-init_db()
-client = TestClient(app)
-
-
-# Feature timelines that the (self-built) liveness detector reads.
-GOOD_FRAMES = {
-    "blink":      [{"ear": 0.30}, {"ear": 0.10}, {"ear": 0.30}],
-    "turn_left":  [{"yaw": -30.0}, {"yaw": 0.0}],
-    "turn_right": [{"yaw": 30.0}, {"yaw": 0.0}],
-    "smile":      [{"mar": 0.70}, {"mar": 0.10}],
-}
-
-
-def frames_for(sequence: list[str]) -> list[dict]:
-    out: list[dict] = []
-    for action in sequence:
-        out.extend(GOOD_FRAMES[action])
-    return out
+# Authenticated client: the limit/credential endpoints now require the P2P key
+# (configured in conftest via KYC_P2P_API_KEYS).
+_KEY = os.environ["KYC_P2P_API_KEYS"].split(",")[0]
+client = TestClient(app, headers={"X-API-Key": _KEY})
 
 
 def _flow(wallet, country, seed, selfie_seed=None, good=True):
-    selfie_seed = selfie_seed or seed
-    sid = client.post("/v1/onboard", json={
-        "wallet_pubkey": wallet, "country": country}).json()["session_id"]
-    l1, l2 = make_mrz()
-    client.post(f"/v1/sessions/{sid}/passport", json={
-        "id_type": "passport", "mrz_line1": l1, "mrz_line2": l2, "person_seed": seed})
-    ch = client.get("/v1/liveness/challenge").json()
-    frames = frames_for(ch["sequence"]) if good else [{"ear": 0.3}]
-    r = client.post(
-        f"/v1/sessions/{sid}/biometrics?liveness_nonce={ch['nonce']}",
-        json={"sub": {"selfie_ref": "s", "person_seed": selfie_seed}, "frames": frames})
-    return sid, r
+    return run_flow(client, wallet, country, seed, selfie_seed=selfie_seed, good=good)
 
 
 def test_happy_path_approves_and_issues_credential():

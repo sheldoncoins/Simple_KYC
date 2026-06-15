@@ -22,15 +22,31 @@ from contextlib import asynccontextmanager
 
 import jwt
 import structlog
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import audit
 from app.config import ACCEPTED_ID_TYPES, policy_for
-from app.db import get_session, init_db
+from app.db import engine, get_session, init_db
 from app.logging_config import configure_logging, get_logger
 from app.models import SessionStatus
+from app.observability import (
+    CONTENT_TYPE,
+    metrics_payload,
+    record_request,
+    register_domain_metrics,
+)
 from app.providers.registry import mrz_reader, signer, task_queue
 from app.schemas import (
     AuditEntry,
@@ -61,14 +77,16 @@ from app.services import (
     revocation,
     verification,
 )
+from app.tracing import setup_tracing
 
 log = get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(application: FastAPI):
     configure_logging()
     init_db()
+    setup_tracing(application)  # no-op unless KYC_OTEL_ENABLED
     log.info("startup", service="kyc", version="1.0")
     yield
 
@@ -90,6 +108,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Register the domain-metrics collector at import (tests don't run the lifespan).
+register_domain_metrics()
+
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -105,13 +126,16 @@ async def log_requests(request: Request, call_next):
     try:
         response = await call_next(request)
     finally:
-        elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+        elapsed_s = time.perf_counter() - start
+    # Use the route template (not the raw path) to keep metric cardinality bounded.
+    route = getattr(request.scope.get("route"), "path", "unmatched")
+    record_request(request.method, route, response.status_code, elapsed_s)
     log.info(
         "request",
         method=request.method,
         path=request.url.path,
         status=response.status_code,
-        duration_ms=elapsed_ms,
+        duration_ms=round(elapsed_s * 1000, 2),
     )
     response.headers["X-Request-ID"] = request_id
     structlog.contextvars.clear_contextvars()
@@ -123,6 +147,29 @@ def jwks():
     """Public signing keys (JWKS). The P2P layer fetches these to verify
     credentials; publishing keys here is what makes key rotation non-breaking."""
     return signer().jwks()
+
+
+@app.get("/healthz")
+def healthz():
+    """Liveness probe: the process is up. No dependencies checked."""
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+def readyz():
+    """Readiness probe: the process can serve traffic (database reachable)."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:
+        raise HTTPException(503, "database_unavailable")
+    return {"status": "ready"}
+
+
+@app.get("/metrics")
+def metrics_endpoint():
+    """Prometheus metrics. Restrict to in-cluster scraping at the network layer."""
+    return Response(content=metrics_payload(), media_type=CONTENT_TYPE)
 
 
 @app.post("/v1/onboard", response_model=OnboardResponse,

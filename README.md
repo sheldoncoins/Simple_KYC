@@ -89,6 +89,8 @@ migrations in `migrations/`.
 | GET  | `/v1/sessions/{id}` | session status + signals |
 | POST | `/v1/sessions/{id}/credential` | issue signed credential (if approved) |
 | GET  | `/.well-known/jwks.json` | public signing keys (JWKS) for credential verification |
+| GET  | `/healthz` · `/readyz` | liveness / readiness probes (readiness checks the DB) |
+| GET  | `/metrics` | Prometheus metrics (HTTP + domain KPIs) — restrict to in-cluster scraping |
 | POST | `/v1/credentials/verify` | 🔑 P2P layer verifies a credential |
 | POST | `/v1/credentials/revoke` | 🔑 revoke a credential (by `jti` or `identity_hash`) |
 | POST | `/v1/limits/debit` | 🔑 consume limit (idempotent) |

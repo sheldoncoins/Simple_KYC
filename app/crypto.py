@@ -69,3 +69,13 @@ def identity_hash(country: str, template_seed: str) -> str:
     """Stable opaque handle for a unique identity, shared with the P2P layer."""
     raw = f"{country.upper()}:{template_seed}".encode()
     return hashlib.sha256(_PII_SALT + raw).hexdigest()
+
+
+def document_token(issuing_country: str, passport_number: str) -> str:
+    """Salted one-way token for a passport (country + number).
+
+    Lets us detect the *same document* used across verifications without ever
+    storing the raw passport number -- the token is non-reversible (HMAC under
+    the server-only salt) and only ever compared for equality, never looked up.
+    """
+    return pii_hash(f"{issuing_country.upper()}:{passport_number.upper()}")

@@ -33,6 +33,12 @@ against all enrolled identities, and a match blocks the new account. The $100
 limit is bound to the **identity**, not the wallet, so a fresh keypair can't
 reset it.
 
+As **defence in depth**, the same *document* reused across identities is flagged
+to manual review (`passport_reused`) — via a **salted one-way token** of the
+passport (country + number), so reuse is detectable without ever storing the raw
+number. It complements the biometric gate (which catches one human regardless of
+how many passports they hold); it does not replace it.
+
 ## Pipeline
 
 ```

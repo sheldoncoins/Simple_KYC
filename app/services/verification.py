@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app import audit
 from app.config import DEFAULT_LIMIT_USDC, policy_for
+from app.crypto import document_token as make_document_token
 from app.crypto import identity_hash as make_identity_hash
 from app.crypto import pii_hash
 from app.models import Decision, IdentityRecord, SessionStatus, User, VerificationSession
@@ -77,12 +78,20 @@ def submit_passport(db: Session, session_id: int, sub: DocumentSubmission) -> Ve
         return sess
 
     mrz = validate_td3(sub.mrz_line1, sub.mrz_line2)
+    # Salted one-way token of the document -- lets us flag the same passport reused
+    # across identities without ever storing the raw number.
+    passport_hash = (
+        make_document_token(mrz.extracted.get("issuing_country", ""),
+                            mrz.extracted.get("passport_number", ""))
+        if mrz.valid and mrz.extracted.get("passport_number") else None
+    )
     sess.signals = {
         **sess.signals,
         "mrz_valid": mrz.valid,
         "mrz_failed_checks": mrz.failed_checks,
         "passport_country": mrz.extracted.get("issuing_country"),
         "passport_person_seed": sub.person_seed,  # binds the doc's 'face'
+        "passport_hash": passport_hash,
     }
     sess.status = SessionStatus.documents_submitted
     audit.record(db, actor="system", action="passport_submitted",
@@ -117,12 +126,19 @@ def submit_biometrics(db: Session, session_id: int, sub: BiometricSubmission,
 
     dd = dedup.search(db, fm.embedding)
 
+    # Has this exact document already enrolled a (different) identity?
+    passport_hash = sess.signals.get("passport_hash")
+    document_reused = bool(passport_hash and db.scalar(
+        select(IdentityRecord.id).where(IdentityRecord.document_hash == passport_hash)
+    ))
+
     sess.signals = {
         **sess.signals,
         "liveness_pass": live.is_live, "liveness_score": live.score,
         "face_match": fm.match, "face_match_score": fm.score,
         "dedup_outcome": dd.outcome, "dedup_score": dd.best_score,
         "dedup_match": dd.match_identity_hash,
+        "document_reused": document_reused,
         "embedding": fm.embedding, "person_seed": sub.person_seed,
     }
 
@@ -157,6 +173,7 @@ def finalize_identity(db: Session, sess: VerificationSession) -> IdentityRecord:
     if rec is None:
         rec = IdentityRecord(
             identity_hash=ih, country=user.country,
+            document_hash=sess.signals.get("passport_hash"),
             biometric_template=sess.signals["embedding"],
             limit_usdc=DEFAULT_LIMIT_USDC,
         )

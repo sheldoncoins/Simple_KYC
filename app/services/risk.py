@@ -42,6 +42,10 @@ def decide(signals: dict, *, high_risk_country: bool) -> RiskOutcome:
     if dedup == "review":
         return RiskOutcome(Decision.review, round(score, 4),
                            "near_duplicate_needs_review")
+    if signals.get("document_reused"):
+        # Same passport already tied to another identity (a new face + a reused
+        # document). Defence-in-depth on top of the biometric gate -> human look.
+        return RiskOutcome(Decision.review, round(score, 4), "passport_reused")
     if high_risk_country:
         return RiskOutcome(Decision.review, round(score, 4),
                            "high_risk_country_manual_review")

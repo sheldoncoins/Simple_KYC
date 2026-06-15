@@ -68,6 +68,10 @@ active matcher (`config.dedup_thresholds()`): mock 0.92/0.86, InsightFace/ArcFac
 0.55/0.40 (override via `KYC_DEDUP_REJECT_COSINE`/`_REVIEW_COSINE`). Switching to
 a real matcher must not silently disable the gate -- keep the defaults calibrated.
 
+Defence in depth: a reused *document* (same `IdentityRecord.document_hash`, a
+salted one-way token of country+passport-number via `crypto.document_token`) is
+routed to review (`passport_reused`). Store only the token, never the raw number.
+
 ## Pipeline (matches the product flow)
 
 ```

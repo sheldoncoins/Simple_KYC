@@ -28,6 +28,7 @@ from app.config import ACCEPTED_ID_TYPES, policy_for
 from app.db import get_session, init_db
 from app.logging_config import configure_logging, get_logger
 from app.models import SessionStatus
+from app.providers.registry import signer
 from app.schemas import (
     BiometricSubmission,
     CredentialResponse,
@@ -37,11 +38,14 @@ from app.schemas import (
     OnboardRequest,
     OnboardResponse,
     ReviewResolution,
+    RevokeRequest,
+    RevokeResponse,
     StatusResponse,
     VerifyCredentialRequest,
     VerifyCredentialResponse,
 )
-from app.services import credentials, ledger, liveness, review, verification
+from app.security import rate_limit, require_p2p_client
+from app.services import credentials, ledger, liveness, review, revocation, verification
 
 log = get_logger(__name__)
 
@@ -84,7 +88,15 @@ async def log_requests(request: Request, call_next):
     return response
 
 
-@app.post("/v1/onboard", response_model=OnboardResponse)
+@app.get("/.well-known/jwks.json")
+def jwks():
+    """Public signing keys (JWKS). The P2P layer fetches these to verify
+    credentials; publishing keys here is what makes key rotation non-breaking."""
+    return signer().jwks()
+
+
+@app.post("/v1/onboard", response_model=OnboardResponse,
+          dependencies=[Depends(rate_limit("onboard"))])
 def onboard(req: OnboardRequest, db: Session = Depends(get_session)):
     try:
         policy = policy_for(req.country)
@@ -113,7 +125,8 @@ def liveness_challenge(actions: int = 2):
             "ttl_seconds": liveness.CHALLENGE_TTL_SECONDS}
 
 
-@app.post("/v1/sessions/{session_id}/biometrics", response_model=StatusResponse)
+@app.post("/v1/sessions/{session_id}/biometrics", response_model=StatusResponse,
+          dependencies=[Depends(rate_limit("biometric"))])
 def submit_biometrics(session_id: int, sub: BiometricSubmission,
                       liveness_nonce: str, frames: list[dict],
                       db: Session = Depends(get_session)):
@@ -154,16 +167,33 @@ def issue_credential(session_id: int, db: Session = Depends(get_session)):
 
 
 @app.post("/v1/credentials/verify", response_model=VerifyCredentialResponse)
-def verify_credential(req: VerifyCredentialRequest):
+def verify_credential(req: VerifyCredentialRequest,
+                      db: Session = Depends(get_session),
+                      _: str = Depends(require_p2p_client)):
     try:
-        claims = credentials.verify(req.credential)
+        claims = credentials.verify(req.credential, db)
         return VerifyCredentialResponse(valid=True, claims=claims)
+    except credentials.RevokedCredentialError:
+        return VerifyCredentialResponse(valid=False, error="revoked")
     except jwt.PyJWTError as e:
         return VerifyCredentialResponse(valid=False, error=str(e))
 
 
+@app.post("/v1/credentials/revoke", response_model=RevokeResponse)
+def revoke_credential(req: RevokeRequest,
+                      db: Session = Depends(get_session),
+                      client: str = Depends(require_p2p_client)):
+    try:
+        revocation.revoke(db, jti=req.jti, identity_hash=req.identity_hash,
+                          reason=req.reason, actor=client)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return RevokeResponse(revoked=True)
+
+
 @app.post("/v1/limits/debit", response_model=LedgerResponse)
-def debit_limit(req: DebitRequest, db: Session = Depends(get_session)):
+def debit_limit(req: DebitRequest, db: Session = Depends(get_session),
+                _: str = Depends(require_p2p_client)):
     try:
         bal = ledger.debit(db, req.identity_hash, req.amount_usdc,
                            req.idempotency_key, req.memo)
@@ -173,7 +203,8 @@ def debit_limit(req: DebitRequest, db: Session = Depends(get_session)):
 
 
 @app.get("/v1/limits/{identity_hash}", response_model=LedgerResponse)
-def limit_balance(identity_hash: str, db: Session = Depends(get_session)):
+def limit_balance(identity_hash: str, db: Session = Depends(get_session),
+                  _: str = Depends(require_p2p_client)):
     try:
         bal = ledger.balance(db, identity_hash)
     except ledger.LimitError as e:

@@ -20,17 +20,29 @@ const REASONS: Record<string, string> = {
     "Your selfie didn’t match the passport photo.",
   passport_mrz_invalid: "The passport could not be validated.",
   duplicate_identity: "This identity is already verified with another account.",
+  too_many_attempts: "You’ve reached the maximum number of attempts.",
   manual_review_rejected: "A reviewer could not approve this verification.",
+};
+
+/** Which wizard step a failure can be retried from, in the same session. A
+ * reason absent here is terminal — retrying the same input won't change the
+ * outcome (a true duplicate), or the session is locked out. */
+const RETRY_STEP: Record<string, number> = {
+  liveness_failed: 2,
+  face_mismatch_selfie_vs_passport: 2,
+  passport_mrz_invalid: 1,
 };
 
 export function StepResult({
   sessionId,
   status,
-  onRetry,
+  onRetryStep,
+  onRestart,
 }: {
   sessionId: number;
   status: StatusResponse;
-  onRetry: () => void;
+  onRetryStep: (step: number) => void;
+  onRestart: () => void;
 }) {
   const decision = status.decision;
   const approved = decision === "approve" || status.status === "approved";
@@ -91,6 +103,9 @@ export function StepResult({
     );
   }
 
+  const reason = status.reject_reason ?? "";
+  const retryStep = RETRY_STEP[reason];
+
   return (
     <Card className="animate-in fade-in-50 zoom-in-95">
       <CardHeader className="items-center text-center">
@@ -99,14 +114,39 @@ export function StepResult({
         </span>
         <CardTitle>Verification didn’t pass</CardTitle>
         <CardDescription>
-          {(status.reject_reason && REASONS[status.reject_reason]) ??
-            "We couldn’t complete your verification."}
+          {REASONS[reason] ?? "We couldn’t complete your verification."}
+          {retryStep !== undefined && (
+            <>
+              {" "}
+              {retryStep === 1
+                ? "Re-upload a clear photo of the passport page and try again."
+                : "Find good lighting, keep your whole face in frame, and try again."}
+            </>
+          )}
         </CardDescription>
       </CardHeader>
       <CardFooter>
-        <Button type="button" className="w-full" onClick={onRetry}>
-          Try again
-        </Button>
+        {retryStep !== undefined ? (
+          // Retryable: go back to just the failed stage, same session.
+          <Button
+            type="button"
+            className="w-full"
+            onClick={() => onRetryStep(retryStep)}
+          >
+            Try again
+          </Button>
+        ) : (
+          // Terminal (e.g. a true duplicate, or out of attempts): only a fresh
+          // start is possible.
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full"
+            onClick={onRestart}
+          >
+            Start over
+          </Button>
+        )}
       </CardFooter>
     </Card>
   );

@@ -23,14 +23,18 @@ import { LivenessGuide } from "./LivenessGuide";
 export function StepLiveness({
   sessionId,
   personSeed,
+  attempt = 0,
   onDone,
 }: {
   sessionId: number;
   personSeed: string;
+  attempt?: number;
   onDone: (status: StatusResponse) => void;
 }) {
   const challenge = useQuery({
-    queryKey: ["liveness-challenge", sessionId],
+    // `attempt` is part of the key so each retry fetches a fresh, single-use
+    // nonce instead of replaying the previous (now-consumed) challenge.
+    queryKey: ["liveness-challenge", sessionId, attempt],
     queryFn: () => api.livenessChallenge(3),
     staleTime: Infinity,
   });
@@ -101,6 +105,21 @@ function LivenessRunner({
         frames,
       ),
     onSuccess: onDone,
+    onError: (err) => {
+      // A 409 means the session can't be retried (e.g. the attempt budget is
+      // spent). Surface it as a terminal result rather than an inline error so
+      // the user gets a clear end state and a "start over" path.
+      if (err instanceof ApiError && err.status === 409) {
+        onDone({
+          session_id: sessionId,
+          status: "rejected",
+          decision: "reject",
+          risk_score: null,
+          reject_reason: err.detail,
+          signals: {},
+        });
+      }
+    },
   });
 
   // When the user finishes the sequence, send the feature timeline + selfie once.

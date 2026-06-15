@@ -51,6 +51,16 @@ def dedup_thresholds() -> tuple[float, float]:
     return reject, review
 
 
+def max_biometric_attempts() -> int:
+    """How many times a session may retry the liveness/1:1 face stage.
+
+    Genuine users routinely need a second try here (lighting, instructions, a
+    glare-y passport scan), so we allow in-session retries -- but cap them: the
+    liveness + 1:1 match is a security gate, and unbounded retries would let it
+    be brute-forced. Read live so it's overridable per deployment / in tests."""
+    return int(os.environ.get("KYC_MAX_BIOMETRIC_ATTEMPTS", "5"))
+
+
 @dataclass(frozen=True)
 class CountryPolicy:
     iso: str

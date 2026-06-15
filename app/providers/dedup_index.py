@@ -68,29 +68,51 @@ class LinearScanIndex(DedupIndex):
 
 
 class PgVectorIndex(DedupIndex):
-    """ANN search via pgvector. Self-provisions its table/extension on first use."""
+    """ANN 1:N search via pgvector with an **HNSW index** for sublinear lookups --
+    the path to millions of identities on a single server.
+
+    Self-provisions its table + HNSW index on first ``add``. The vector dimension
+    is taken from the first embedding (or ``KYC_EMBEDDING_DIM``), so it works for
+    the 128-d mock and 512-d ArcFace without config. HNSW build/search params are
+    tunable; ``ef_search`` trades latency for recall -- and for a Sybil gate you
+    want high recall (a missed near-duplicate is a Sybil that slips through).
+    """
 
     def __init__(self, dim: int | None = None) -> None:
-        self._dim = dim or int(os.environ.get("KYC_EMBEDDING_DIM", "128"))
+        env_dim = os.environ.get("KYC_EMBEDDING_DIM")
+        # None -> infer the dimension from the first embedding added.
+        self._dim = dim or (int(env_dim) if env_dim else None)
+        self._m = int(os.environ.get("KYC_HNSW_M", "16"))
+        self._ef_construction = int(os.environ.get("KYC_HNSW_EF_CONSTRUCTION", "64"))
+        self._ef_search = int(os.environ.get("KYC_HNSW_EF_SEARCH", "100"))
         self._ready = False
 
-    def _ensure(self, db: Session) -> None:
+    def _ensure(self, db: Session, dim: int) -> None:
         if self._ready:
             return
         db.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         db.execute(text(
             "CREATE TABLE IF NOT EXISTS identity_vectors ("
             "identity_hash text PRIMARY KEY, "
-            f"embedding vector({self._dim}))"
+            f"embedding vector({dim}))"
+        ))
+        # HNSW index -> approximate nearest neighbour in ~ms at millions of rows.
+        db.execute(text(
+            "CREATE INDEX IF NOT EXISTS identity_vectors_hnsw "
+            "ON identity_vectors USING hnsw (embedding vector_cosine_ops) "
+            f"WITH (m = {self._m}, ef_construction = {self._ef_construction})"
         ))
         self._ready = True
+
+    def _table_exists(self, db: Session) -> bool:
+        return db.execute(text("SELECT to_regclass('identity_vectors')")).scalar() is not None
 
     @staticmethod
     def _literal(embedding: list[float]) -> str:
         return "[" + ",".join(repr(float(x)) for x in embedding) + "]"
 
     def add(self, db: Session, identity_hash: str, embedding: list[float]) -> None:
-        self._ensure(db)
+        self._ensure(db, self._dim or len(embedding))
         db.execute(
             text(
                 "INSERT INTO identity_vectors (identity_hash, embedding) "
@@ -101,7 +123,11 @@ class PgVectorIndex(DedupIndex):
         )
 
     def best_match(self, db: Session, embedding: list[float]) -> tuple[float, str | None]:
-        self._ensure(db)
+        # No enrollments yet -> nothing to match (and don't create an empty table).
+        if not self._ready and not self._table_exists(db):
+            return -1.0, None
+        # Recall/latency knob for the HNSW search (per-transaction).
+        db.execute(text(f"SET LOCAL hnsw.ef_search = {self._ef_search}"))
         row = db.execute(
             text(
                 "SELECT identity_hash, 1 - (embedding <=> CAST(:v AS vector)) AS score "

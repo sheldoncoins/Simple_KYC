@@ -83,6 +83,9 @@ class IdentityRecord(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # Stable opaque handle shared with the P2P layer. Never reveals PII.
     identity_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # Salted one-way token of the enrolling passport (country+number) -- used to
+    # flag the same document reused across identities. Never the raw number.
+    document_hash: Mapped[str | None] = mapped_column(String(64), index=True)
     country: Mapped[str] = mapped_column(String(2))
     # Face embedding used for 1:N dedup. JSON list[float]. In production this is
     # a vendor template; never store raw selfies alongside it long-term.

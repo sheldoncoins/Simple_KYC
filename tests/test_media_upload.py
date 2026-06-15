@@ -3,14 +3,14 @@ from __future__ import annotations
 
 from app.services.mrz_demo import make_mrz
 
-from tests._helpers import frames_for
+from tests._helpers import frames_for, passport_number_for
 
 
 def test_passport_image_upload_reads_mrz_and_approves(client) -> None:
     sid = client.post("/v1/onboard", json={
         "wallet_pubkey": "media_wallet_1", "country": "BR"}).json()["session_id"]
 
-    line1, line2 = make_mrz()
+    line1, line2 = make_mrz(number=passport_number_for("media_person_1"))
     # The dev MRZ reader treats the upload bytes as the two MRZ lines.
     image = f"{line1}\n{line2}".encode()
     r = client.post(

@@ -29,3 +29,24 @@ def test_index_identity_is_noop_for_linear_backend() -> None:
     # nothing and must not raise.
     with session_scope() as db:
         assert dedup.index_identity(db, "whatever", [0.1, 0.2, 0.3]) is None
+
+
+def test_dedup_thresholds_adapt_to_face_matcher(monkeypatch) -> None:
+    from app import config
+
+    monkeypatch.delenv("KYC_DEDUP_REJECT_COSINE", raising=False)
+    monkeypatch.delenv("KYC_DEDUP_REVIEW_COSINE", raising=False)
+
+    monkeypatch.delenv("KYC_FACE_MATCHER", raising=False)
+    assert config.dedup_thresholds() == (0.92, 0.86)  # mock space
+
+    monkeypatch.setenv("KYC_FACE_MATCHER", "insightface")
+    assert config.dedup_thresholds() == (0.55, 0.40)  # ArcFace space
+
+
+def test_dedup_thresholds_env_override(monkeypatch) -> None:
+    from app import config
+
+    monkeypatch.setenv("KYC_DEDUP_REJECT_COSINE", "0.5")
+    monkeypatch.setenv("KYC_DEDUP_REVIEW_COSINE", "0.42")
+    assert config.dedup_thresholds() == (0.5, 0.42)

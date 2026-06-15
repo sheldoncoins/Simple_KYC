@@ -11,19 +11,44 @@ The only thing that varies per country now is risk routing: VE stays elevated
 (weak ID infra + OFAC exposure) so its sessions bias toward manual review even
 though we don't screen.
 """
-from __future__ import annotations
-
+import os
 from dataclasses import dataclass
 
 DEFAULT_LIMIT_USDC: float = 100.0
 CREDENTIAL_TTL_SECONDS: int = 3600
 
 # 1:N biometric dedup (cosine similarity in [-1, 1]) -- the real Sybil gate.
-DEDUP_REJECT_THRESHOLD: float = 0.92   # same person already enrolled -> block
-DEDUP_REVIEW_THRESHOLD: float = 0.86   # close (e.g. twins) -> human review
+# These defaults match the deterministic mock (same person -> ~1.0). A real
+# embedding model lives in a different cosine space (ArcFace: same person ~0.5-0.7,
+# different ~0-0.2), so `dedup_thresholds()` adapts the defaults to the active
+# matcher and lets them be overridden per deployment.
+DEDUP_REJECT_THRESHOLD: float = 0.92   # mock default: already enrolled -> block
+DEDUP_REVIEW_THRESHOLD: float = 0.86   # mock default: close (twins) -> review
 
-FACE_MATCH_MIN_SCORE: float = 0.80     # 1:1 selfie vs passport photo
+# ArcFace/InsightFace cosine starting points. Tune against the real applicant
+# population: lower = catch more duplicates (more reviews / risk of false block),
+# higher = fewer false blocks (risk of missed Sybils).
+_INSIGHTFACE_REJECT: float = 0.55
+_INSIGHTFACE_REVIEW: float = 0.40
+
+FACE_MATCH_MIN_SCORE: float = 0.80     # 1:1 selfie vs passport photo (mock)
 LIVENESS_MIN_SCORE: float = 0.70       # self-built challenge-response score
+
+
+def dedup_thresholds() -> tuple[float, float]:
+    """(reject, review) cosine thresholds for 1:N dedup.
+
+    Defaults follow the active face matcher's embedding space so switching to the
+    real model doesn't silently disable the Sybil gate. Override either with
+    ``KYC_DEDUP_REJECT_COSINE`` / ``KYC_DEDUP_REVIEW_COSINE``.
+    """
+    if os.environ.get("KYC_FACE_MATCHER", "mock").strip().lower() == "insightface":
+        reject_default, review_default = _INSIGHTFACE_REJECT, _INSIGHTFACE_REVIEW
+    else:
+        reject_default, review_default = DEDUP_REJECT_THRESHOLD, DEDUP_REVIEW_THRESHOLD
+    reject = float(os.environ.get("KYC_DEDUP_REJECT_COSINE", reject_default))
+    review = float(os.environ.get("KYC_DEDUP_REVIEW_COSINE", review_default))
+    return reject, review
 
 
 @dataclass(frozen=True)

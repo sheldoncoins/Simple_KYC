@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.config import DEDUP_REJECT_THRESHOLD, DEDUP_REVIEW_THRESHOLD
+from app.config import dedup_thresholds
 from app.providers.registry import dedup_index
 
 
@@ -28,10 +28,11 @@ class DedupResult:
 
 def search(db: Session, embedding: list[float]) -> DedupResult:
     best_score, best_hash = dedup_index().best_match(db, embedding)
+    reject_threshold, review_threshold = dedup_thresholds()
 
-    if best_score >= DEDUP_REJECT_THRESHOLD:
+    if best_score >= reject_threshold:
         outcome = "reject"          # same person already enrolled
-    elif best_score >= DEDUP_REVIEW_THRESHOLD:
+    elif best_score >= review_threshold:
         outcome = "review"          # too close to auto-clear (e.g. twins)
     else:
         outcome = "clear"

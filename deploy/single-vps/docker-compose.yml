@@ -1,0 +1,117 @@
+# Single-VPS production stack: everything on one box behind Caddy (automatic
+# HTTPS). Bring it up with `docker compose up -d --build` from this directory
+# after filling in `.env` (see .env.example + README.md).
+#
+# Topology: caddy (TLS + same-origin routing) -> { web (Next.js), api (FastAPI) }
+#           api/worker -> postgres+pgvector, redis; biometrics run on the worker
+#           via arq. Raw media is encrypted on a shared volume and purged hourly.
+name: kyc
+
+# Shared app config for api + worker (identical env -- same decision logic).
+x-app-env: &app-env
+  KYC_DATABASE_URL: postgresql+psycopg://kyc:${POSTGRES_PASSWORD}@db:5432/kyc
+  KYC_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+  KYC_TASK_QUEUE: arq                 # biometrics off the request path
+  KYC_DEDUP_BACKEND: pgvector         # HNSW 1:N dedup (needs the pgvector image)
+  KYC_FACE_MATCHER: insightface       # real selfie<->passport match
+  KYC_MRZ_READER: ocr                 # read MRZ from the uploaded image
+  KYC_STORAGE_BACKEND: local          # encrypted on the shared /data volume
+  KYC_STORAGE_DIR: /data/media
+  KYC_STORAGE_KEY: ${KYC_STORAGE_KEY}
+  KYC_SIGNER: local                   # on-disk Ed25519 (see README: KMS upgrade)
+  KYC_SIGNING_KEY_PATH: /data/signing_key.pem
+  KYC_PII_SALT: ${KYC_PII_SALT}
+  KYC_P2P_API_KEYS: ${KYC_P2P_API_KEYS}
+  KYC_ADMIN_API_KEYS: ${KYC_ADMIN_API_KEYS}
+  KYC_CORS_ORIGINS: https://${KYC_DOMAIN}
+  KYC_MEDIA_RETENTION_SECONDS: "86400"
+  KYC_LOG_FORMAT: json
+
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      KYC_DOMAIN: ${KYC_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+
+  db:
+    image: pgvector/pgvector:pg16      # Postgres 16 with the `vector` extension
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kyc
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: kyc
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kyc -d kyc"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/single-vps/Dockerfile.api
+    restart: unless-stopped
+    environment: *app-env
+    volumes:
+      - appdata:/data                 # media (encrypted) + signing key, shared with worker
+      - insightface:/root/.insightface  # cache the ArcFace model across restarts
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/single-vps/Dockerfile.api
+    restart: unless-stopped
+    command: ["arq", "app.worker.WorkerSettings"]
+    environment: *app-env
+    volumes:
+      - appdata:/data                 # must see the passport image the api stored
+      - insightface:/root/.insightface
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  web:
+    build:
+      context: ../../web
+      args:
+        # Baked into the client bundle: same origin as the API (Caddy routes /v1).
+        NEXT_PUBLIC_API_BASE_URL: https://${KYC_DOMAIN}
+    restart: unless-stopped
+    environment:
+      HOSTNAME: 0.0.0.0               # Next standalone must bind all interfaces
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  appdata:
+  insightface:
+  caddy_data:
+  caddy_config:

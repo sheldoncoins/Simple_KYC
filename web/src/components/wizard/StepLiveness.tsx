@@ -147,8 +147,12 @@ function LivenessRunner({
           ref={videoRef}
           playsInline
           muted
-          // Mirror the front camera so the preview feels natural.
-          className="size-full -scale-x-100 object-cover"
+          // Mirror the preview for a front camera so it feels natural; the same
+          // flag flips the yaw sign, so display and detection never disagree.
+          className={cn(
+            "size-full object-cover",
+            liveness.mirrored && "-scale-x-100",
+          )}
         />
         {/* Face-framing oval to help the user position themselves. */}
         {liveness.status === "running" && (

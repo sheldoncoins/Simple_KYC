@@ -65,8 +65,20 @@ const MOUTH_BOTTOM = 14;
 const MOUTH_LEFT = 61;
 const MOUTH_RIGHT = 291;
 
-/** Reduce one FaceLandmarker result to the {ear, yaw, mar} the server scores. */
-export function extractFeatures(result: FaceLandmarkerResult): Features | null {
+/**
+ * Reduce one FaceLandmarker result to the {ear, yaw, mar} the server scores.
+ *
+ * `mirrored` must match how the preview is displayed: a front ("user") camera is
+ * shown mirrored, which flips the user's left/right, so we negate yaw to keep
+ * the guidance egocentric -- turning toward your own left yields a negative yaw
+ * (turn_left), your right a positive yaw (turn_right), matching
+ * app/services/liveness.py. A non-mirrored rear camera needs no flip. Threading
+ * the same flag through the preview and here keeps them from desyncing.
+ */
+export function extractFeatures(
+  result: FaceLandmarkerResult,
+  mirrored: boolean,
+): Features | null {
   const lm = result.faceLandmarks?.[0] as Point[] | undefined;
   if (!lm || lm.length < 468) return null;
 
@@ -77,15 +89,12 @@ export function extractFeatures(result: FaceLandmarkerResult): Features | null {
   const mouthHorizontal = dist(lm[MOUTH_LEFT], lm[MOUTH_RIGHT]) || 1e-6;
   const mar = mouthVertical / mouthHorizontal;
 
-  // Yaw from the 4x4 facial transformation matrix (column-major). The preview
-  // is presented mirrored (natural selfie view), so we negate to match the
-  // instruction's frame of reference: turning toward your own left gives a
-  // negative yaw (turn_left), toward your right a positive yaw (turn_right) --
-  // matching app/services/liveness.py.
+  // Yaw from the 4x4 facial transformation matrix (column-major).
   const matrix = result.facialTransformationMatrixes?.[0]?.data;
   let yaw = 0;
   if (matrix && matrix.length === 16) {
-    yaw = -((Math.atan2(matrix[8], matrix[10]) * 180) / Math.PI);
+    yaw = (Math.atan2(matrix[8], matrix[10]) * 180) / Math.PI;
+    if (mirrored) yaw = -yaw;
   }
 
   return {

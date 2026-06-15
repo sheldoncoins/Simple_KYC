@@ -1,0 +1,32 @@
+# Pre-commit hooks. Install once with: pre-commit install
+# Run on all files with:               pre-commit run --all-files
+#
+# Note: ruff-format runs only on changed files, so the existing tree is adopted
+# gradually rather than reformatted in one large churn (see the Phase 0 PR note).
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.17
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.1.0
+    hooks:
+      - id: mypy
+        files: ^(app|run_demo\.py)
+        additional_dependencies:
+          - pydantic==2.13.4
+          - sqlalchemy==2.0.50
+          - structlog==26.1.0

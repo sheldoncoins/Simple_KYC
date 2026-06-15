@@ -1,0 +1,37 @@
+# Frontend (Next.js wizard + admin console). NEXT_PUBLIC_API_BASE_URL is baked at
+# image build time, so build the image with the right public API URL.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kyc-web
+  namespace: kyc
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: kyc-web }
+  template:
+    metadata:
+      labels: { app: kyc-web }
+    spec:
+      containers:
+        - name: web
+          image: kyc-web:latest
+          ports:
+            - containerPort: 3000
+          readinessProbe:
+            httpGet: { path: /, port: 3000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits: { cpu: "300m", memory: "256Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kyc-web
+  namespace: kyc
+spec:
+  selector: { app: kyc-web }
+  ports:
+    - { port: 3000, targetPort: 3000 }

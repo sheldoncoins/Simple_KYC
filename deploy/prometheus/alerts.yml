@@ -1,0 +1,45 @@
+# Alerting rules. Thresholds/windows are starting points -- tune against real
+# traffic. The domain metrics are DB-derived gauges of cumulative counts, so
+# "spike" rules use delta() over a window rather than the absolute ratio.
+groups:
+  - name: kyc-api
+    rules:
+      - alert: KycApiDown
+        expr: up{job="kyc-api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "KYC API target is down"
+
+      - alert: KycHighServerErrorRate
+        expr: |
+          sum(rate(kyc_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(kyc_http_requests_total[5m])), 1) > 0.05
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "5xx rate above 5% over 10m"
+
+      - alert: KycRejectionRateSpike
+        expr: |
+          delta(kyc_decisions_total{decision="reject"}[1h])
+            / clamp_min(delta(kyc_sessions_total[1h]), 1) > 0.5
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Recent rejection rate above 50% (possible upstream/abuse issue)"
+
+      - alert: KycDedupAnomaly
+        # A rising 1:N dedup hit rate is an account-farm signal.
+        expr: kyc_dedup_hit_rate > 0.2
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Dedup hit rate above 20% (possible Sybil/account-farm activity)"
+
+      - alert: KycLivenessPassRateLow
+        expr: kyc_liveness_pass_rate < 0.5
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Liveness pass rate below 50% (camera/UX or attack signal)"

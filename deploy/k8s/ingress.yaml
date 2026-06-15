@@ -1,0 +1,33 @@
+# Routes the API and the frontend under one host. Adjust host, ingress class and
+# TLS for your cluster. /metrics is intentionally NOT exposed here -- scrape it
+# in-cluster only.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kyc
+  namespace: kyc
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  rules:
+    - host: verify.example.com
+      http:
+        paths:
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: kyc-api
+                port: { number: 8000 }
+          - path: /.well-known/jwks.json
+            pathType: Exact
+            backend:
+              service:
+                name: kyc-api
+                port: { number: 8000 }
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kyc-web
+                port: { number: 3000 }

@@ -1,0 +1,68 @@
+# API: a one-shot migration Job, the Deployment (with health/readiness probes
+# and Prometheus scrape annotations), and its Service. Replace the image with
+# your built image (docker build -t <registry>/kyc-server:<tag> .).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kyc-migrate
+  namespace: kyc
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: kyc-server:latest
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef: { name: kyc-config }
+            - secretRef: { name: kyc-secrets }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kyc-api
+  namespace: kyc
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: kyc-api }
+  template:
+    metadata:
+      labels: { app: kyc-api }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: /metrics
+    spec:
+      containers:
+        - name: api
+          image: kyc-server:latest
+          command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef: { name: kyc-config }
+            - secretRef: { name: kyc-secrets }
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /readyz, port: 8000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { cpu: "500m", memory: "512Mi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kyc-api
+  namespace: kyc
+spec:
+  selector: { app: kyc-api }
+  ports:
+    - { port: 8000, targetPort: 8000 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Clock, XCircle } from "lucide-react";
+import { Check, Clock, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import type { StatusResponse } from "@/lib/schemas";
 import { Button } from "@/components/ui/button";
@@ -47,22 +47,27 @@ export function StepResult({
 
   if (approved) {
     return (
-      <Card>
+      <Card className="overflow-hidden animate-in fade-in-50 zoom-in-95">
         <CardHeader className="items-center text-center">
-          <CheckCircle2 className="size-12 text-success" aria-hidden />
-          <CardTitle>You’re verified</CardTitle>
+          <span className="mb-1 flex size-20 items-center justify-center rounded-full bg-success/10 animate-glow">
+            <span className="flex size-14 items-center justify-center rounded-full bg-success text-success-foreground animate-pop-in">
+              <Check className="size-8" strokeWidth={3} aria-hidden />
+            </span>
+          </span>
+          <CardTitle className="text-2xl">You’re verified 🎉</CardTitle>
           <CardDescription>
             Your identity is confirmed and your limit is ready.
           </CardDescription>
         </CardHeader>
         <CardContent className="text-center">
           {credential.data && (
-            <p className="text-sm text-muted-foreground">
-              Remaining limit:{" "}
-              <span className="font-medium text-foreground">
-                ${credential.data.limit_remaining_usdc.toFixed(2)} USDC
-              </span>
-            </p>
+            <div className="rounded-xl border bg-muted/50 p-4">
+              <p className="text-xs text-muted-foreground">Remaining limit</p>
+              <p className="text-2xl font-bold text-brand-gradient">
+                ${credential.data.limit_remaining_usdc.toFixed(2)}{" "}
+                <span className="text-base font-semibold">USDC</span>
+              </p>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -71,9 +76,11 @@ export function StepResult({
 
   if (inReview) {
     return (
-      <Card>
+      <Card className="animate-in fade-in-50 zoom-in-95">
         <CardHeader className="items-center text-center">
-          <Clock className="size-12 text-muted-foreground" aria-hidden />
+          <span className="mb-1 flex size-16 items-center justify-center rounded-full bg-muted animate-pop-in">
+            <Clock className="size-8 text-muted-foreground" aria-hidden />
+          </span>
           <CardTitle>In review</CardTitle>
           <CardDescription>
             Your verification needs a quick manual review. We’ll update you
@@ -85,9 +92,11 @@ export function StepResult({
   }
 
   return (
-    <Card>
+    <Card className="animate-in fade-in-50 zoom-in-95">
       <CardHeader className="items-center text-center">
-        <XCircle className="size-12 text-destructive" aria-hidden />
+        <span className="mb-1 flex size-16 items-center justify-center rounded-full bg-destructive/10 animate-pop-in">
+          <XCircle className="size-8 text-destructive" aria-hidden />
+        </span>
         <CardTitle>Verification didn’t pass</CardTitle>
         <CardDescription>
           {(status.reject_reason && REASONS[status.reject_reason]) ??

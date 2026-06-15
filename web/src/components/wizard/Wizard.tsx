@@ -39,8 +39,13 @@ export function Wizard() {
   }
 
   return (
-    <main id="main" className="mx-auto w-full max-w-md px-4 py-8">
-      <h1 className="mb-6 text-center text-2xl font-bold">Verify your identity</h1>
+    <main id="main" className="safe-bottom mx-auto w-full max-w-md px-4 pb-10 pt-6">
+      <h1 className="text-center text-2xl font-bold tracking-tight">
+        <span className="text-brand-gradient">Verify your identity</span>
+      </h1>
+      <p className="mb-6 mt-1 text-center text-sm text-muted-foreground">
+        Quick, secure, and private — about a minute.
+      </p>
       <Stepper current={state.step} />
 
       {state.step === 0 && (

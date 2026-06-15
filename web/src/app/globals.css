@@ -4,35 +4,48 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 240 33% 99%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 72.2% 50.6%;
-    --destructive-foreground: 210 40% 98%;
-    --success: 142.1 70.6% 35.3%;
-    --success-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.625rem;
+    --card-foreground: 222 47% 11%;
+    --primary: 243 75% 59%; /* indigo-600 */
+    --primary-foreground: 0 0% 100%;
+    --brand: 243 75% 59%; /* indigo */
+    --brand-2: 269 80% 60%; /* violet */
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 243 75% 96%;
+    --accent-foreground: 243 60% 40%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 42%;
+    --success-foreground: 0 0% 100%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 243 75% 59%;
+    --radius: 1rem;
   }
 
   * {
     @apply border-border;
   }
 
+  html {
+    -webkit-text-size-adjust: 100%; /* don't let mobile rescale text */
+  }
+
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    min-height: 100dvh;
+    background:
+      radial-gradient(1100px 560px at 50% -8%, hsl(var(--brand) / 0.12), transparent 60%),
+      radial-gradient(820px 520px at 100% 105%, hsl(var(--brand-2) / 0.10), transparent 55%),
+      hsl(var(--background));
+    background-attachment: fixed;
     font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-tap-highlight-color: transparent; /* no grey flash on tap */
   }
 
   /* Respect users who prefer reduced motion (WCAG 2.3.3). */
@@ -44,6 +57,25 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.001ms !important;
     }
+  }
+}
+
+@layer utilities {
+  .text-brand-gradient {
+    background: linear-gradient(120deg, hsl(var(--brand)), hsl(var(--brand-2)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .bg-brand-gradient {
+    background-image: linear-gradient(135deg, hsl(var(--brand)), hsl(var(--brand-2)));
+  }
+  /* Honour the notch / home indicator on mobile. */
+  .safe-top {
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+  }
+  .safe-bottom {
+    padding-bottom: max(1.25rem, calc(env(safe-area-inset-bottom) + 0.25rem));
   }
 }
 
@@ -65,11 +97,25 @@
   50% { transform: translateY(-6px); }
 }
 @keyframes ring-pulse {
-  0% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.35); }
-  100% { box-shadow: 0 0 0 14px hsl(var(--primary) / 0); }
+  0% { box-shadow: 0 0 0 0 hsl(var(--brand) / 0.4); }
+  100% { box-shadow: 0 0 0 16px hsl(var(--brand) / 0); }
+}
+@keyframes pop-in {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--success) / 0.0); }
+  50% { box-shadow: 0 0 36px 4px hsl(var(--success) / 0.45); }
+}
+@keyframes shimmer {
+  100% { background-position: 200% 0; }
 }
 .animate-nudge-left { animation: nudge-left 1s ease-in-out infinite; }
 .animate-nudge-right { animation: nudge-right 1s ease-in-out infinite; }
 .animate-blink { animation: blink 1.6s ease-in-out infinite; }
 .animate-bounce-soft { animation: bounce-soft 1.2s ease-in-out infinite; }
 .animate-ring-pulse { animation: ring-pulse 1.6s ease-out infinite; }
+.animate-pop-in { animation: pop-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-glow { animation: glow 1.8s ease-in-out infinite; }

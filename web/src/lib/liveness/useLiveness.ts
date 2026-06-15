@@ -12,6 +12,13 @@ import { log } from "@/lib/logger";
 
 export type LivenessStatus = "idle" | "loading" | "running" | "done" | "error";
 
+// The camera the liveness check drives. A front ("user") camera is shown
+// mirrored for a natural selfie view; that single flag also flips the yaw sign
+// (see extractFeatures) so the turn-left/right guidance stays egocentric. Switch
+// to "environment" (rear) and both the preview mirror and the sign follow.
+const FACING_MODE: "user" | "environment" = "user";
+const MIRRORED = FACING_MODE === "user";
+
 const INSTRUCTIONS: Record<string, string> = {
   blink: "Blink your eyes",
   turn_left: "Slowly turn your head to the left",
@@ -139,7 +146,7 @@ export function useLiveness(
     if (video.currentTime !== lastVideoTimeRef.current) {
       lastVideoTimeRef.current = video.currentTime;
       const result = landmarker.detectForVideo(video, performance.now());
-      const features = extractFeatures(result);
+      const features = extractFeatures(result, MIRRORED);
       if (features) {
         framesRef.current.push(features);
         detectCurrent(features);
@@ -158,7 +165,7 @@ export function useLiveness(
     lastVideoTimeRef.current = -1;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: 640, height: 480 },
+        video: { facingMode: FACING_MODE, width: 640, height: 480 },
         audio: false,
       });
       streamRef.current = stream;
@@ -187,5 +194,7 @@ export function useLiveness(
     }
   }, [videoRef, sequence, loop, cleanup]);
 
-  return { ...state, start, reset: cleanup };
+  // `mirrored` is constant for the chosen camera; the preview uses it so the
+  // displayed flip and the yaw sign always agree.
+  return { ...state, mirrored: MIRRORED, start, reset: cleanup };
 }

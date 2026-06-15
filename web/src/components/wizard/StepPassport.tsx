@@ -2,10 +2,12 @@
 
 import { useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, Upload } from "lucide-react";
+import { FileText, ImageIcon, Loader2, UploadCloud } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { pdfFirstPageToJpeg } from "@/lib/pdf";
 import { log } from "@/lib/logger";
 import type { StatusResponse } from "@/lib/schemas";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -17,6 +19,8 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
+import { PrivacyNote } from "@/components/ui/privacy-note";
+import { PassportExample } from "./PassportExample";
 
 const DEV_MRZ = process.env.NEXT_PUBLIC_DEV_MRZ === "1";
 
@@ -30,8 +34,38 @@ export function StepPassport({
   onDone: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [blob, setBlob] = useState<Blob | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [converting, setConverting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
   const [mrz, setMrz] = useState("");
+
+  async function accept(file: File) {
+    setLocalError(null);
+    const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    const isImage = file.type.startsWith("image/");
+    if (!isPdf && !isImage) {
+      setLocalError("Please choose an image (JPG/PNG) or a PDF.");
+      return;
+    }
+    try {
+      let out: Blob = file;
+      if (isPdf) {
+        setConverting(true);
+        out = await pdfFirstPageToJpeg(file); // render page 1 in-browser
+      }
+      if (preview) URL.revokeObjectURL(preview);
+      setBlob(out);
+      setFileName(file.name);
+      setPreview(URL.createObjectURL(out));
+    } catch {
+      setLocalError("We couldn’t read that file. Try a clear photo or PDF of the page.");
+    } finally {
+      setConverting(false);
+    }
+  }
 
   const checkResult = (res: StatusResponse) => {
     const valid = res.signals?.mrz_valid;
@@ -41,9 +75,8 @@ export function StepPassport({
 
   const imageMutation = useMutation({
     mutationFn: async () => {
-      const file = fileRef.current?.files?.[0];
-      if (!file) throw new ApiError(0, "no_file_selected");
-      return api.submitPassportImage(sessionId, file, personSeed);
+      if (!blob) throw new ApiError(0, "no_file_selected");
+      return api.submitPassportImage(sessionId, blob, personSeed);
     },
     onSuccess: checkResult,
   });
@@ -72,36 +105,88 @@ export function StepPassport({
   const mrzInvalid = result && !result.signals?.mrz_valid;
 
   return (
-    <Card>
+    <Card className="animate-in fade-in-50 slide-in-from-bottom-2">
       <CardHeader>
         <CardTitle>Passport</CardTitle>
         <CardDescription>
-          Capture or upload the photo page of your passport. We read the
-          machine-readable zone (MRZ) and check it.
+          Add the photo page of your passport. We read the machine-readable zone
+          (MRZ) and check it.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <PassportExample />
+
         <input
           ref={fileRef}
           type="file"
-          accept="image/*"
-          capture="environment"
+          accept="image/*,application/pdf"
           className="sr-only"
-          aria-label="Passport image"
-          onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
+          aria-label="Passport image or PDF"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void accept(f);
+          }}
         />
-        <Button
-          type="button"
-          variant="outline"
-          className="h-28 w-full flex-col border-dashed"
+
+        {/* Drag-and-drop zone */}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Drag and drop your passport image or PDF, or click to choose a file"
           onClick={() => fileRef.current?.click()}
-        >
-          <Upload aria-hidden />
-          <span>{fileName ? "Change image" : "Capture or upload passport"}</span>
-          {fileName && (
-            <span className="text-xs text-muted-foreground">{fileName}</span>
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") fileRef.current?.click();
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            const f = e.dataTransfer.files?.[0];
+            if (f) void accept(f);
+          }}
+          className={cn(
+            "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            dragging ? "border-primary bg-primary/5" : "border-input hover:bg-accent/40",
           )}
-        </Button>
+        >
+          {converting ? (
+            <>
+              <Loader2 className="size-7 animate-spin text-primary" aria-hidden />
+              <span className="text-sm">Converting PDF…</span>
+            </>
+          ) : preview ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={preview}
+                alt="Selected passport preview"
+                className="max-h-36 rounded-md border object-contain"
+              />
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {fileName?.toLowerCase().endsWith(".pdf") ? (
+                  <FileText className="size-3.5" aria-hidden />
+                ) : (
+                  <ImageIcon className="size-3.5" aria-hidden />
+                )}
+                {fileName} · tap to change
+              </span>
+            </>
+          ) : (
+            <>
+              <UploadCloud className="size-8 text-muted-foreground" aria-hidden />
+              <span className="text-sm font-medium">
+                Drag &amp; drop, or tap to upload
+              </span>
+              <span className="text-xs text-muted-foreground">
+                JPG, PNG or PDF · or use your camera
+              </span>
+            </>
+          )}
+        </div>
 
         {DEV_MRZ && (
           <div className="space-y-1.5 rounded-md border border-dashed p-3">
@@ -126,11 +211,16 @@ export function StepPassport({
           </div>
         )}
 
+        {localError && (
+          <Alert variant="destructive">
+            <AlertDescription>{localError}</AlertDescription>
+          </Alert>
+        )}
         {mrzInvalid && (
           <Alert variant="destructive">
             <AlertDescription>
-              We couldn’t read a valid MRZ. Make sure the whole passport page is
-              in frame, well lit, and try again.
+              We couldn’t read a valid MRZ. Make sure the whole page is in frame,
+              well lit, and try again.
             </AlertDescription>
           </Alert>
         )}
@@ -139,12 +229,17 @@ export function StepPassport({
             <AlertDescription>{apiError}</AlertDescription>
           </Alert>
         )}
+
+        <PrivacyNote>
+          Your passport is encrypted, used only to verify you, and deleted after a
+          short retention window — only an anonymous template is kept.
+        </PrivacyNote>
       </CardContent>
       <CardFooter>
         <Button
           type="button"
           className="w-full"
-          disabled={pending || !fileName}
+          disabled={pending || converting || !blob}
           onClick={() => imageMutation.mutate()}
         >
           {pending && <Loader2 className="animate-spin" aria-hidden />}

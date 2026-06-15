@@ -41,7 +41,35 @@
     *::before,
     *::after {
       animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
       transition-duration: 0.001ms !important;
     }
   }
 }
+
+/* Liveness action cues. */
+@keyframes nudge-left {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-10px); }
+}
+@keyframes nudge-right {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(10px); }
+}
+@keyframes blink {
+  0%, 35%, 100% { transform: scaleY(1); opacity: 1; }
+  20% { transform: scaleY(0.1); opacity: 0.6; }
+}
+@keyframes bounce-soft {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes ring-pulse {
+  0% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.35); }
+  100% { box-shadow: 0 0 0 14px hsl(var(--primary) / 0); }
+}
+.animate-nudge-left { animation: nudge-left 1s ease-in-out infinite; }
+.animate-nudge-right { animation: nudge-right 1s ease-in-out infinite; }
+.animate-blink { animation: blink 1.6s ease-in-out infinite; }
+.animate-bounce-soft { animation: bounce-soft 1.2s ease-in-out infinite; }
+.animate-ring-pulse { animation: ring-pulse 1.6s ease-out infinite; }

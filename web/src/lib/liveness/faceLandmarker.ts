@@ -77,12 +77,15 @@ export function extractFeatures(result: FaceLandmarkerResult): Features | null {
   const mouthHorizontal = dist(lm[MOUTH_LEFT], lm[MOUTH_RIGHT]) || 1e-6;
   const mar = mouthVertical / mouthHorizontal;
 
-  // Yaw from the 4x4 facial transformation matrix (column-major). Front cameras
-  // are mirrored, so the sign convention may need flipping per deployment.
+  // Yaw from the 4x4 facial transformation matrix (column-major). The preview
+  // is presented mirrored (natural selfie view), so we negate to match the
+  // instruction's frame of reference: turning toward your own left gives a
+  // negative yaw (turn_left), toward your right a positive yaw (turn_right) --
+  // matching app/services/liveness.py.
   const matrix = result.facialTransformationMatrixes?.[0]?.data;
   let yaw = 0;
   if (matrix && matrix.length === 16) {
-    yaw = (Math.atan2(matrix[8], matrix[10]) * 180) / Math.PI;
+    yaw = -((Math.atan2(matrix[8], matrix[10]) * 180) / Math.PI);
   }
 
   return {

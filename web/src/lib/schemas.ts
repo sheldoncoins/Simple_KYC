@@ -67,3 +67,40 @@ export type CredentialResponse = z.infer<typeof CredentialResponse>;
 /** A single liveness feature frame; only derived features, never pixels. */
 export const LivenessFrame = z.record(z.string(), z.number());
 export type LivenessFrame = z.infer<typeof LivenessFrame>;
+
+// --- Admin / review console -------------------------------------------------
+
+export const ReviewListItem = z.object({
+  item_id: z.number().int(),
+  session_id: z.number().int(),
+  reason: z.string(),
+  payload: z.record(z.string(), z.unknown()),
+  country: z.string().nullable(),
+  status: z.string(),
+  decision: z.string().nullable(),
+  risk_score: z.number().nullable(),
+  signals: z.record(z.string(), z.unknown()),
+  created_at: z.string(),
+});
+export type ReviewListItem = z.infer<typeof ReviewListItem>;
+
+export const AuditEntry = z.object({
+  id: z.number().int(),
+  actor: z.string(),
+  action: z.string(),
+  subject: z.string().nullable(),
+  detail: z.string().nullable(),
+  created_at: z.string(),
+});
+export type AuditEntry = z.infer<typeof AuditEntry>;
+
+export const MetricsSummary = z.object({
+  total_sessions: z.number().int(),
+  decided: z.number().int(),
+  decisions: z.record(z.string(), z.number()),
+  rates: z.record(z.string(), z.number()),
+  dedup_hit_rate: z.number(),
+  liveness_pass_rate: z.number(),
+  per_country: z.record(z.string(), z.record(z.string(), z.number())),
+});
+export type MetricsSummary = z.infer<typeof MetricsSummary>;

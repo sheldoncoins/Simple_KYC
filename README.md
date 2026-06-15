@@ -111,11 +111,12 @@ Endpoints marked 🔑 require a P2P client API key (`X-API-Key`); see
 | Risk engine, review queue, audit log | **Real** |
 | Media storage encrypted at rest + retention/purge | **Real** — local AES-256-GCM; purge job deletes expired raw media |
 | KMS/HSM-backed signing | Plug in — implement `KmsSigner` in `app/providers/signer.py` (`KYC_SIGNER=kms`); local Ed25519 is the dev fallback |
+| 1:N dedup search backend | **Real** — pluggable; linear scan (default) or **pgvector** ANN (`KYC_DEDUP_BACKEND=pgvector`), decision/thresholds identical |
 | S3-compatible object storage | Plug in — `S3Storage` (`KYC_STORAGE_BACKEND=s3`, needs `boto3`); local encrypted store is the dev fallback |
 | Passport MRZ OCR (read from image) | Plug in — `PassportEyeMrzReader` (`KYC_MRZ_READER=ocr`); the text reader drives dev/tests. Validation stays deterministic |
 | Liveness landmark extraction | Plug in MediaPipe / dlib (self-hosted) |
-| Face embedding (1:1 + 1:N) | Plug in InsightFace/ArcFace (self-hosted) or a face API — implement `FaceMatcher` in `app/providers/face.py` |
-| Dedup index at scale | Swap linear scan for FAISS / pgvector (logic unchanged) |
+| Face embedding (1:1 + 1:N) | Plug in `InsightFaceMatcher` (`KYC_FACE_MATCHER=insightface`); the deterministic mock drives dev/tests. Needs real selfie/passport images (UI, Phase 4) |
+| Dedup + matching background worker | Plug in — arq/Celery + Redis (Phase 3b); the pipeline is currently synchronous |
 
 ## Production hardening (before real money)
 

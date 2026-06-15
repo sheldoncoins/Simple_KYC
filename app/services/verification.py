@@ -148,6 +148,9 @@ def finalize_identity(db: Session, sess: VerificationSession) -> IdentityRecord:
         )
         db.add(rec)
         db.flush()
+        # Register the new identity with the dedup search backend (no-op for the
+        # linear scan; stores the vector for pgvector ANN search).
+        dedup.index_identity(db, rec.identity_hash, rec.biometric_template)
     user.identity_id = rec.id
     sess.status = SessionStatus.approved
     sess.decision = Decision.approve

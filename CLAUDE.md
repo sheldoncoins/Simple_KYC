@@ -39,6 +39,11 @@ and build the UI. See `BUILD_PLAN.md` for the phased roadmap.
   retention TTL (`app/services/retention.py`, `app/jobs/purge_media.py`) -- only
   derived templates persist. MRZ *validation* stays deterministic regardless of
   how the lines were read.
+- **The dedup search backend is pluggable** (`app/providers/dedup_index.py`):
+  `LinearScanIndex` (default) or `PgVectorIndex` (`KYC_DEDUP_BACKEND=pgvector`).
+  The reject/review thresholds and twin handling in `services/dedup.py` are
+  identical across backends -- only the nearest-neighbour search changes. New
+  enrollments call `dedup.index_identity(...)` (a no-op for linear).
 
 ## The one idea everything protects
 
@@ -77,8 +82,8 @@ app/
   security.py      P2P API-key auth + in-process rate limiter
   logging_config.py structlog setup
   main.py          FastAPI routes (/v1/..., JWKS at /.well-known/jwks.json)
-  providers/       FaceMatcher + Signer + ObjectStorage + MrzReader interfaces,
-                   mocks/local fallbacks + registry (swap point)
+  providers/       FaceMatcher + Signer + ObjectStorage + MrzReader + DedupIndex
+                   interfaces, mocks/local fallbacks + registry (swap point)
   services/        mrz, liveness, dedup, risk, credentials, ledger, review,
                    revocation, media, retention, verification (orchestrator)
   jobs/            purge_media (retention deletion job)

@@ -5,19 +5,33 @@ from __future__ import annotations
 import os
 
 from app.providers.base import FaceMatcher
+from app.providers.dedup_index import DedupIndex, LinearScanIndex, PgVectorIndex
 from app.providers.face import MockFaceMatcher
 from app.providers.mrz_reader import MrzReader, PassportEyeMrzReader, TextMrzReader
 from app.providers.signer import KmsSigner, LocalEd25519Signer, Signer
 from app.providers.storage import LocalEncryptedStorage, ObjectStorage, S3Storage
 
-_face_matcher: FaceMatcher = MockFaceMatcher()
+# --- Face matcher -----------------------------------------------------------
+# Mock is the tested default; the real model is behind a flag (KYC_FACE_MATCHER).
+_face_matcher: FaceMatcher | None = None
+
+
+def _build_face_matcher() -> FaceMatcher:
+    backend = os.environ.get("KYC_FACE_MATCHER", "mock").strip().lower()
+    if backend == "insightface":
+        from app.providers.face import InsightFaceMatcher
+        return InsightFaceMatcher()
+    return MockFaceMatcher()
 
 
 def face_matcher() -> FaceMatcher:
+    global _face_matcher
+    if _face_matcher is None:
+        _face_matcher = _build_face_matcher()
     return _face_matcher
 
 
-def set_face_matcher(impl: FaceMatcher) -> None:
+def set_face_matcher(impl: FaceMatcher | None) -> None:
     global _face_matcher
     _face_matcher = impl
 
@@ -92,3 +106,26 @@ def mrz_reader() -> MrzReader:
 def set_mrz_reader(impl: MrzReader | None) -> None:
     global _mrz_reader
     _mrz_reader = impl
+
+
+# --- Dedup search backend ---------------------------------------------------
+_dedup_index: DedupIndex | None = None
+
+
+def _build_dedup_index() -> DedupIndex:
+    backend = os.environ.get("KYC_DEDUP_BACKEND", "linear").strip().lower()
+    if backend == "pgvector":
+        return PgVectorIndex()
+    return LinearScanIndex()
+
+
+def dedup_index() -> DedupIndex:
+    global _dedup_index
+    if _dedup_index is None:
+        _dedup_index = _build_dedup_index()
+    return _dedup_index
+
+
+def set_dedup_index(impl: DedupIndex | None) -> None:
+    global _dedup_index
+    _dedup_index = impl

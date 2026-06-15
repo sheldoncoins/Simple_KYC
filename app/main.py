@@ -47,7 +47,7 @@ from app.observability import (
     record_request,
     register_domain_metrics,
 )
-from app.providers.registry import mrz_reader, signer, task_queue
+from app.providers.registry import face_matcher, mrz_reader, signer, task_queue
 from app.schemas import (
     AuditEntry,
     BiometricSubmission,
@@ -82,10 +82,26 @@ from app.tracing import setup_tracing
 log = get_logger(__name__)
 
 
+def _warmup_face_matcher() -> None:
+    """Build the face matcher at startup so a heavy model (InsightFace, ~300 MB)
+    downloads/loads once here -- with a clear log line -- instead of blocking the
+    first verification request. Non-fatal: a failure is logged, not raised."""
+    backend = os.environ.get("KYC_FACE_MATCHER", "mock").strip().lower()
+    if backend == "mock":
+        return  # nothing to load
+    try:
+        log.info("face_matcher_warmup_start", backend=backend)
+        face_matcher()  # builds the model (may download weights on first run)
+        log.info("face_matcher_warmup_done", backend=backend)
+    except Exception as exc:  # startup must survive a model-load failure
+        log.error("face_matcher_warmup_failed", backend=backend, error=str(exc))
+
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     configure_logging()
     init_db()
+    _warmup_face_matcher()
     setup_tracing(application)  # no-op unless KYC_OTEL_ENABLED
     log.info("startup", service="kyc", version="1.0")
     yield

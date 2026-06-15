@@ -146,16 +146,102 @@ The API enables CORS for the wizard origin via `KYC_CORS_ORIGINS`.
 | Face match (1:1 selfie↔passport) + embedding | **Real** — `InsightFaceMatcher` (ArcFace) compares the captured selfie to the passport photo (`KYC_FACE_MATCHER=insightface`, install `requirements-face.txt`). The deterministic mock is the default and drives dev/tests |
 | Dedup + matching background worker | **Real** — pluggable; inline (default) or **arq + Redis** worker (`KYC_TASK_QUEUE=arq`), client polls session status |
 
-## Production hardening (before real money)
+## Deploying to production
 
-Done in Phase 1: Postgres + Alembic migrations; a swappable `Signer` with a JWKS
-endpoint and key-rotation support; P2P client API-key auth; rate limiting on
-onboarding + biometric submission; and credential revocation. Done in Phase 2:
-media uploads to encrypted-at-rest object storage (local AES-GCM or S3) with a
-retention TTL + purge job, and server-side MRZ reading from a passport image
-(deterministic validation unchanged). Still outstanding before real money: a real
-**KMS/HSM** signer (the `KmsSigner` seam — keys must leave disk); production
-object storage on S3/KMS; a real OCR backend; a distributed rate limiter
-(Redis/edge); a full DSAR/deletion flow and DPIA; and a legal review of
-money-transmission/VASP obligations in each market. This code does not
-constitute legal or compliance advice.
+> **Read this first.** This repo is a *tested reference backend*, not a
+> production-ready service. The topology below is real and the manifests work,
+> but you **must** clear the blockers in [Before real money](#before-real-money)
+> — above all a real KMS signer — before handling live funds or real PII.
+> Nothing here is legal or compliance advice.
+
+### Recommended platform
+
+Run it on managed Kubernetes (or a managed container service) in a region with
+**Indian data residency** — biometric + identity data under the DPDP Act 2023,
+plus your VASP/AML posture, makes Mumbai the sensible home. The reference mapping
+is **AWS `ap-south-1` (Mumbai)**; GCP (`asia-south1`) maps one-to-one.
+
+| Need | Service (AWS `ap-south-1`) | Wires to |
+|---|---|---|
+| Containers (api, worker, web) | **EKS** (or ECS Fargate) | `deploy/k8s/*` |
+| Postgres + **pgvector** | **RDS for PostgreSQL 16** (`CREATE EXTENSION vector`) | `KYC_DATABASE_URL`, `KYC_DEDUP_BACKEND=pgvector` |
+| Redis (queue) | **ElastiCache for Redis** | `KYC_REDIS_URL`, `KYC_TASK_QUEUE=arq` |
+| Encrypted media at rest | **S3 + SSE-KMS** | `KYC_STORAGE_BACKEND=s3`, `KYC_S3_BUCKET` |
+| Credential signing keys | **AWS KMS** (asymmetric) | `KYC_SIGNER=kms` ‹implement `KmsSigner`› |
+| Secrets (salt, API keys, DB) | **Secrets Manager / SSM** | k8s `Secret` / external-secrets |
+| TLS + ingress | **ALB + ACM** (or ingress-nginx + cert-manager) | `deploy/k8s/ingress.yaml` |
+| DNS | **Route 53** | — |
+| Metrics + alerts | Managed **Prometheus + Grafana** | `/metrics`, `deploy/prometheus/*` |
+
+The API is **stateless** — scale it horizontally behind the load balancer. The
+CPU-heavy work is the InsightFace embedding on the **worker**; scale worker
+replicas independently (GPU optional for throughput). pgvector's HNSW index
+carries 1:N dedup to millions of identities on a single primary.
+
+### Deploy steps
+
+1. **Provision** RDS (PG16 + `vector` extension), ElastiCache, an S3 bucket with
+   SSE-KMS, and the EKS cluster.
+2. **Build & push** both images to your registry (ECR):
+   ```bash
+   docker build -t <ecr>/kyc-server:<tag> .
+   docker build -t <ecr>/kyc-web:<tag> \
+     --build-arg NEXT_PUBLIC_API_BASE_URL=https://verify.example.com ./web
+   ```
+3. **Secrets**: put real values in Secrets Manager and surface them as the
+   `kyc-secrets` Secret (e.g. via external-secrets) — never commit them.
+4. **Configure** the production env (table below) in `deploy/k8s/config.yaml`.
+5. **Migrate**: the `kyc-migrate` Job runs `alembic upgrade head` on deploy —
+   Alembic owns the schema in production.
+6. **Apply** the manifests in order — see [`deploy/README.md`](deploy/README.md)
+   (namespace → config → data → api → worker → web → cronjob → ingress).
+7. **TLS + DNS + CORS**: point Route 53 at the ALB, terminate TLS with ACM, and
+   set `KYC_CORS_ORIGINS` to the wizard's HTTPS origin only.
+8. **Observe**: scrape `/metrics` in-cluster, load `deploy/prometheus/alerts.yml`
+   (rejection-rate + dedup-anomaly alerts), wire Alertmanager + Grafana.
+9. **Verify retention**: confirm the purge runs (worker cron + `k8s/cronjob.yaml`)
+   and raw media disappears within `KYC_MEDIA_RETENTION_SECONDS` (+ ~1h).
+
+### Production environment
+
+| Variable | Production value | Why |
+|---|---|---|
+| `KYC_DATABASE_URL` | `postgresql+psycopg://…@<rds>/kyc` | managed Postgres |
+| `KYC_DEDUP_BACKEND` | `pgvector` | HNSW 1:N dedup at scale |
+| `KYC_REDIS_URL` / `KYC_TASK_QUEUE` | `redis://<elasticache>` / `arq` | biometrics off the request path |
+| `KYC_SIGNER` | `kms` | keys never touch disk ‹needs `KmsSigner`› |
+| `KYC_STORAGE_BACKEND` / `KYC_S3_BUCKET` | `s3` / `<bucket>` | encrypted media at rest |
+| `KYC_FACE_MATCHER` | `insightface` | real 1:1 match (`requirements-face.txt`) |
+| `KYC_MRZ_READER` | `ocr` | read MRZ from image (`requirements-ocr.txt` + tesseract) |
+| `KYC_PII_SALT` | secret, **long-lived** | rotating it invalidates every hash |
+| `KYC_P2P_API_KEYS` / `KYC_ADMIN_API_KEYS` | strong random, rotated | P2P + staff auth |
+| `KYC_CORS_ORIGINS` | `https://verify.example.com` | lock to the wizard origin |
+| `KYC_MEDIA_RETENTION_SECONDS` | `86400` (or lower) | raw-media TTL |
+| `KYC_LOG_FORMAT` | `json` | structured logs (never PII) |
+
+### Before real money
+
+Standing up the infrastructure is **not** the same as being safe to launch.
+What was hardened already: Postgres + Alembic, a swappable `Signer` with JWKS +
+key rotation, P2P/staff auth, rate limiting, credential revocation, encrypted-at-
+rest media with a retention purge, and pgvector dedup. Still **required** before
+live funds or real PII:
+
+- [ ] **Implement `KmsSigner`** (`app/providers/signer.py`) — the dev signer
+      keeps the Ed25519 key on disk; production keys must live in a KMS/HSM.
+- [ ] **Distributed rate limiter** — the in-process limiter doesn't hold across
+      API replicas; move it to Redis or the edge/WAF.
+- [ ] **Liveness anti-spoofing** — add passive + injection/virtual-camera
+      defences; the self-built active check doesn't stop deepfakes.
+- [ ] **Robust MRZ OCR (or NFC chip read)** — the OCR reader is a starting seam
+      and misreads real photos; check-digit validation stays deterministic.
+- [ ] **DSAR / right-to-erasure + DPIA** — biometric data under DPDP 2023 / LGPD
+      / NDPA needs a per-user deletion flow and an impact assessment.
+- [ ] **AML / regulatory** — FIU-IND registration, PMLA + suspicious-transaction
+      reporting, and sanctions screening (intentionally absent) for an India VDA/VASP.
+- [ ] **Transaction-layer fraud monitoring** — this service verifies a *unique
+      live human*, not honest funds; pair it with fiat-rail + coordination
+      analytics (the mule-farm gap).
+- [ ] **Security review + pen test** of the biometric template store and signing path.
+
+This code does not constitute legal or compliance advice.

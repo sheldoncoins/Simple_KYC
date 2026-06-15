@@ -37,7 +37,7 @@ plugins = ["pydantic.mypy"]
 
 # Optional production-only deps, lazily imported inside provider seams.
 [[tool.mypy.overrides]]
-module = ["boto3", "passporteye"]
+module = ["boto3", "passporteye", "cv2", "insightface.app"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

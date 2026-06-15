@@ -47,3 +47,42 @@ class MockFaceMatcher(FaceMatcher):
             score=round(score, 4),
             embedding=selfie.tolist(),
         )
+
+
+class InsightFaceMatcher(FaceMatcher):  # pragma: no cover - needs the model stack
+    """Production seam: self-hosted ArcFace/InsightFace embeddings.
+
+    A real matcher compares **images**, not seeds, so it needs the selfie and
+    passport-photo bytes plumbed through (uploaded to object storage, as the
+    passport image already is in Phase 2; selfie capture lands with the Phase 4
+    UI). The reference pipeline drives the deterministic ``MockFaceMatcher``
+    instead, so this is intentionally not wired into the seed-based flow.
+
+    The embedding step is concrete (see ``_embed``): load ``insightface``,
+    detect+align the largest face, return the 512-d normalized embedding. Select
+    with ``KYC_FACE_MATCHER=insightface`` once real images flow through ``match``.
+    """
+
+    def __init__(self) -> None:
+        raise NotImplementedError(
+            "InsightFaceMatcher needs the model stack (insightface + onnxruntime) "
+            "and real selfie/passport image bytes wired through match(). Use "
+            "KYC_FACE_MATCHER=mock for the reference flow."
+        )
+
+    def _embed(self, image: bytes) -> np.ndarray:
+        import cv2  # noqa: F401  (decode bytes -> ndarray)
+        from insightface.app import FaceAnalysis
+
+        app = FaceAnalysis(name="buffalo_l")
+        app.prepare(ctx_id=-1)
+        frame = cv2.imdecode(np.frombuffer(image, np.uint8), cv2.IMREAD_COLOR)
+        faces = app.get(frame)
+        if not faces:
+            raise ValueError("no face detected")
+        emb = max(faces, key=lambda f: f.det_score).normed_embedding
+        return np.asarray(emb, dtype=float)
+
+    def match(self, *, selfie_ref: str, person_seed: str,
+              passport_person_seed: str) -> FaceMatchResult:
+        raise NotImplementedError

@@ -79,3 +79,14 @@ class LedgerResponse(BaseModel):
 class ReviewResolution(BaseModel):
     resolution: str = Field(..., pattern="^(approve|reject)$")
     reviewer: str = "manual_reviewer"
+
+
+class RevokeRequest(BaseModel):
+    # Target a single token (jti) or an entire identity (identity_hash).
+    jti: str | None = None
+    identity_hash: str | None = None
+    reason: str = Field("manual", max_length=255)
+
+
+class RevokeResponse(BaseModel):
+    revoked: bool

@@ -28,7 +28,7 @@ from app.config import ACCEPTED_ID_TYPES, policy_for
 from app.db import get_session, init_db
 from app.logging_config import configure_logging, get_logger
 from app.models import SessionStatus
-from app.providers.registry import mrz_reader, signer
+from app.providers.registry import mrz_reader, signer, task_queue
 from app.schemas import (
     BiometricSubmission,
     CredentialResponse,
@@ -164,8 +164,18 @@ def liveness_challenge(actions: int = 2):
 def submit_biometrics(session_id: int, sub: BiometricSubmission,
                       liveness_nonce: str, frames: list[dict],
                       db: Session = Depends(get_session)):
+    """Run the biometric decision. With the async queue (KYC_TASK_QUEUE=arq) the
+    work is dispatched to the worker and the session returns in
+    ``biometrics_submitted`` -- poll GET /v1/sessions/{id} for the decision.
+    Inline (default) returns the decision directly."""
     try:
-        sess = verification.submit_biometrics(db, session_id, sub, liveness_nonce, frames)
+        if task_queue().is_async():
+            sess = verification.mark_biometrics_received(db, session_id)
+            task_queue().enqueue_biometrics(
+                session_id, sub.model_dump(), liveness_nonce, frames)
+        else:
+            sess = verification.submit_biometrics(
+                db, session_id, sub, liveness_nonce, frames)
     except ValueError as e:
         raise HTTPException(404, str(e))
     return _status(sess)

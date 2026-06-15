@@ -158,6 +158,16 @@ def finalize_identity(db: Session, sess: VerificationSession) -> IdentityRecord:
     return rec
 
 
+def mark_biometrics_received(db: Session, session_id: int) -> VerificationSession:
+    """Async path: record that biometrics arrived and flip the session to
+    ``biometrics_submitted`` so a polling client sees "processing" until the
+    worker runs ``submit_biometrics`` and writes the decision."""
+    sess = _get(db, session_id)
+    sess.status = SessionStatus.biometrics_submitted
+    db.flush()
+    return sess
+
+
 def _get(db: Session, session_id: int) -> VerificationSession:
     sess = db.get(VerificationSession, session_id)
     if sess is None:

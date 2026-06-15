@@ -10,6 +10,7 @@ from app.providers.face import MockFaceMatcher
 from app.providers.mrz_reader import MrzReader, PassportEyeMrzReader, TextMrzReader
 from app.providers.signer import KmsSigner, LocalEd25519Signer, Signer
 from app.providers.storage import LocalEncryptedStorage, ObjectStorage, S3Storage
+from app.providers.task_queue import ArqTaskQueue, InlineTaskQueue, TaskQueue
 
 # --- Face matcher -----------------------------------------------------------
 # Mock is the tested default; the real model is behind a flag (KYC_FACE_MATCHER).
@@ -129,3 +130,26 @@ def dedup_index() -> DedupIndex:
 def set_dedup_index(impl: DedupIndex | None) -> None:
     global _dedup_index
     _dedup_index = impl
+
+
+# --- Task queue (biometric decision dispatch) -------------------------------
+_task_queue: TaskQueue | None = None
+
+
+def _build_task_queue() -> TaskQueue:
+    backend = os.environ.get("KYC_TASK_QUEUE", "inline").strip().lower()
+    if backend == "arq":
+        return ArqTaskQueue()
+    return InlineTaskQueue()
+
+
+def task_queue() -> TaskQueue:
+    global _task_queue
+    if _task_queue is None:
+        _task_queue = _build_task_queue()
+    return _task_queue
+
+
+def set_task_queue(impl: TaskQueue | None) -> None:
+    global _task_queue
+    _task_queue = impl

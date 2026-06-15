@@ -206,6 +206,8 @@ def submit_passport(session_id: int, sub: DocumentSubmission,
                     db: Session = Depends(get_session)):
     try:
         sess = verification.submit_passport(db, session_id, sub)
+    except verification.SessionConflict as e:
+        raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(404, str(e))
     return _status(sess)
@@ -232,6 +234,8 @@ async def submit_passport_image(session_id: int,
                              person_seed=person_seed)
     try:
         sess = verification.submit_passport(db, session_id, sub)
+    except verification.SessionConflict as e:
+        raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(404, str(e))
     return _status(sess)
@@ -255,12 +259,17 @@ def submit_biometrics(session_id: int, sub: BiometricSubmission,
     Inline (default) returns the decision directly."""
     try:
         if task_queue().is_async():
+            # Reject early (terminal / out of retries) so we don't enqueue a
+            # doomed job; the worker re-checks the same guard before deciding.
+            verification.ensure_can_submit_biometrics(db, session_id)
             sess = verification.mark_biometrics_received(db, session_id)
             task_queue().enqueue_biometrics(
                 session_id, sub.model_dump(), liveness_nonce, frames)
         else:
             sess = verification.submit_biometrics(
                 db, session_id, sub, liveness_nonce, frames)
+    except verification.SessionConflict as e:
+        raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(404, str(e))
     return _status(sess)

@@ -22,6 +22,9 @@ interface State {
   sessionId: number | null;
   personSeed: string;
   result: StatusResponse | null;
+  /** Bumped on every retry so the liveness step remounts and pulls a fresh,
+   * single-use challenge instead of replaying a consumed nonce. */
+  attempt: number;
 }
 
 const INITIAL: State = {
@@ -29,13 +32,21 @@ const INITIAL: State = {
   sessionId: null,
   personSeed: "",
   result: null,
+  attempt: 0,
 };
 
 export function Wizard() {
   const [state, setState] = useState<State>(INITIAL);
 
+  // Full reset: brand-new session (used only when there's nothing to salvage).
   function restart() {
     setState(INITIAL);
+  }
+
+  // In-session retry: jump back to the failed stage, keeping the same session
+  // and person handle so the user only redoes what failed.
+  function retryStep(step: number) {
+    setState((s) => ({ ...s, step, result: null, attempt: s.attempt + 1 }));
   }
 
   return (
@@ -71,8 +82,10 @@ export function Wizard() {
 
       {state.step === 2 && state.sessionId !== null && (
         <StepLiveness
+          key={state.attempt}
           sessionId={state.sessionId}
           personSeed={state.personSeed}
+          attempt={state.attempt}
           onDone={(result) => setState((s) => ({ ...s, result, step: 3 }))}
         />
       )}
@@ -81,7 +94,8 @@ export function Wizard() {
         <StepResult
           sessionId={state.sessionId}
           status={state.result}
-          onRetry={restart}
+          onRetryStep={retryStep}
+          onRestart={restart}
         />
       )}
     </main>

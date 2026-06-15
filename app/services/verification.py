@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.config import DEFAULT_LIMIT_USDC, policy_for
+from app.config import DEFAULT_LIMIT_USDC, max_biometric_attempts, policy_for
 from app.crypto import document_token as make_document_token
 from app.crypto import identity_hash as make_identity_hash
 from app.crypto import pii_hash
@@ -22,6 +22,39 @@ from app.providers.registry import face_matcher
 from app.schemas import BiometricSubmission, DocumentSubmission, OnboardRequest
 from app.services import dedup, liveness, media, review, risk
 from app.services.mrz import validate_td3
+
+
+class SessionConflict(Exception):
+    """A session can't accept another submission for this stage.
+
+    Raised when a session is already verified, sitting in the manual-review
+    queue, or has exhausted its biometric retry budget. The HTTP layer maps it
+    to 409 so the client stops re-submitting (and, crucially, an *approved*
+    session is never reprocessed -- re-running 1:N dedup on it would collide the
+    now-enrolled identity with itself and self-reject as a duplicate)."""
+
+
+# --- Retry guards ---------------------------------------------------------
+
+def _ensure_not_decided(sess: VerificationSession) -> None:
+    """Approved / in-review sessions are terminal: don't re-decide them."""
+    if sess.status == SessionStatus.approved:
+        raise SessionConflict("already_verified")
+    if sess.status == SessionStatus.pending_review:
+        raise SessionConflict("in_manual_review")
+
+
+def _assert_biometrics_retryable(sess: VerificationSession) -> None:
+    _ensure_not_decided(sess)
+    if sess.signals.get("biometric_attempts", 0) >= max_biometric_attempts():
+        raise SessionConflict("too_many_attempts")
+
+
+def ensure_can_submit_biometrics(db: Session, session_id: int) -> None:
+    """Gate a biometric submission before any work happens (used by the async
+    queue path, which must reject early instead of enqueuing a doomed job)."""
+    _assert_biometrics_retryable(_get(db, session_id))
+
 
 # --- Onboarding -----------------------------------------------------------
 
@@ -71,6 +104,7 @@ def _device_risk(db: Session, user: User) -> float:
 
 def submit_passport(db: Session, session_id: int, sub: DocumentSubmission) -> VerificationSession:
     sess = _get(db, session_id)
+    _ensure_not_decided(sess)  # don't overwrite a passport on a decided session
     if sub.id_type != "passport":
         sess.signals = {**sess.signals, "mrz_valid": False}
         sess.status = SessionStatus.documents_submitted
@@ -105,7 +139,10 @@ def submit_passport(db: Session, session_id: int, sub: DocumentSubmission) -> Ve
 def submit_biometrics(db: Session, session_id: int, sub: BiometricSubmission,
                       liveness_nonce: str, frames: list[dict]) -> VerificationSession:
     sess = _get(db, session_id)
+    _assert_biometrics_retryable(sess)  # terminal? out of retries? -> 409
+    attempt = sess.signals.get("biometric_attempts", 0) + 1
     sess.status = SessionStatus.biometrics_submitted
+    sess.reject_reason = None  # clear any prior attempt's reason before re-deciding
 
     live = liveness.verify_response(liveness_nonce, frames)
 
@@ -140,6 +177,7 @@ def submit_biometrics(db: Session, session_id: int, sub: BiometricSubmission,
         "dedup_match": dd.match_identity_hash,
         "document_reused": document_reused,
         "embedding": fm.embedding, "person_seed": sub.person_seed,
+        "biometric_attempts": attempt,
     }
 
     outcome = risk.decide(sess.signals, high_risk_country=sess.signals["high_risk_country"])

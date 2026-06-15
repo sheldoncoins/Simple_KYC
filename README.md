@@ -137,7 +137,7 @@ The API enables CORS for the wizard origin via `KYC_CORS_ORIGINS`.
 | S3-compatible object storage | Plug in — `S3Storage` (`KYC_STORAGE_BACKEND=s3`, needs `boto3`); local encrypted store is the dev fallback |
 | Passport MRZ OCR (read from image) | Plug in — `PassportEyeMrzReader` (`KYC_MRZ_READER=ocr`); the text reader drives dev/tests. Validation stays deterministic |
 | Liveness landmark extraction | Plug in MediaPipe / dlib (self-hosted) |
-| Face embedding (1:1 + 1:N) | Plug in `InsightFaceMatcher` (`KYC_FACE_MATCHER=insightface`); the deterministic mock drives dev/tests. Needs real selfie/passport images (UI, Phase 4) |
+| Face match (1:1 selfie↔passport) + embedding | **Real** — `InsightFaceMatcher` (ArcFace) compares the captured selfie to the passport photo (`KYC_FACE_MATCHER=insightface`, install `requirements-face.txt`). The deterministic mock is the default and drives dev/tests |
 | Dedup + matching background worker | **Real** — pluggable; inline (default) or **arq + Redis** worker (`KYC_TASK_QUEUE=arq`), client polls session status |
 
 ## Production hardening (before real money)

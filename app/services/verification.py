@@ -6,6 +6,8 @@ Pipeline order matches the product-flow diagram:
 """
 from __future__ import annotations
 
+import base64
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,9 +16,10 @@ from app.config import DEFAULT_LIMIT_USDC, policy_for
 from app.crypto import identity_hash as make_identity_hash
 from app.crypto import pii_hash
 from app.models import Decision, IdentityRecord, SessionStatus, User, VerificationSession
+from app.providers.base import FaceMatchInput
 from app.providers.registry import face_matcher
 from app.schemas import BiometricSubmission, DocumentSubmission, OnboardRequest
-from app.services import dedup, liveness, review, risk
+from app.services import dedup, liveness, media, review, risk
 from app.services.mrz import validate_td3
 
 # --- Onboarding -----------------------------------------------------------
@@ -97,9 +100,20 @@ def submit_biometrics(db: Session, session_id: int, sub: BiometricSubmission,
 
     live = liveness.verify_response(liveness_nonce, frames)
 
+    # Selfie image (captured during liveness): store it encrypted (short TTL) and
+    # use it for the real 1:1 face match. The passport photo is the image stored
+    # during the document step. Seeds drive the deterministic mock matcher.
+    selfie_image = base64.b64decode(sub.selfie_b64) if sub.selfie_b64 else None
+    if selfie_image:
+        media.store(db, kind="selfie_image", data=selfie_image,
+                    content_type="image/jpeg", session_id=session_id)
+    passport_image = media.latest_bytes(db, session_id, "passport_image")
+
     passport_seed = sess.signals.get("passport_person_seed", "")
-    fm = face_matcher().match(selfie_ref=sub.selfie_ref, person_seed=sub.person_seed,
-                              passport_person_seed=passport_seed)
+    fm = face_matcher().match(FaceMatchInput(
+        selfie_seed=sub.person_seed, passport_seed=passport_seed,
+        selfie_image=selfie_image, passport_image=passport_image,
+    ))
 
     dd = dedup.search(db, fm.embedding)
 

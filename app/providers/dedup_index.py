@@ -51,10 +51,17 @@ class LinearScanIndex(DedupIndex):
         return None
 
     def best_match(self, db: Session, embedding: list[float]) -> tuple[float, str | None]:
+        if not embedding:  # e.g. a failed face read -> nothing to compare
+            return -1.0, None
         query = _unit(embedding)
         best_score, best_hash = -1.0, None
         for rec in db.scalars(select(IdentityRecord)):
-            score = float(np.dot(query, _unit(rec.biometric_template)))
+            template = rec.biometric_template
+            # Skip enrollments from a different embedding model (dimension
+            # mismatch) so mixed templates never crash the scan.
+            if not template or len(template) != len(embedding):
+                continue
+            score = float(np.dot(query, _unit(template)))
             if score > best_score:
                 best_score, best_hash = score, rec.identity_hash
         return best_score, best_hash

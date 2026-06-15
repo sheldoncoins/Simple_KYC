@@ -52,3 +52,23 @@ def load(db: Session, media_id: int) -> bytes:
     if obj is None or obj.deleted_at is not None:
         raise ValueError("media_not_found")
     return storage().get(obj.storage_ref)
+
+
+def latest_bytes(db: Session, session_id: int, kind: str) -> bytes | None:
+    """Decrypted bytes of the most recent non-deleted ``kind`` blob for a
+    session, or ``None`` if there isn't one. Used to fetch the passport image
+    for face matching."""
+    from sqlalchemy import select
+
+    obj = db.scalars(
+        select(MediaObject)
+        .where(
+            MediaObject.session_id == session_id,
+            MediaObject.kind == kind,
+            MediaObject.deleted_at.is_(None),
+        )
+        .order_by(MediaObject.id.desc())
+    ).first()
+    if obj is None:
+        return None
+    return storage().get(obj.storage_ref)

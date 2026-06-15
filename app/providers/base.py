@@ -23,8 +23,19 @@ class FaceMatchResult:
     embedding: list[float]  # selfie embedding, reused for 1:N dedup
 
 
+@dataclass
+class FaceMatchInput:
+    """Everything a matcher might need. The mock uses the seeds (deterministic,
+    for tests); a real model (InsightFace) uses the image bytes. Callers pass
+    whatever they have -- a real selfie image is only present once the wizard
+    captures one."""
+    selfie_seed: str = ""
+    passport_seed: str = ""
+    selfie_image: bytes | None = None
+    passport_image: bytes | None = None
+
+
 class FaceMatcher(ABC):
     @abstractmethod
-    def match(self, *, selfie_ref: str, person_seed: str,
-              passport_person_seed: str) -> FaceMatchResult:
-        """Return 1:1 match result + the selfie embedding for dedup."""
+    def match(self, inp: FaceMatchInput) -> FaceMatchResult:
+        """Return the 1:1 match result + the selfie embedding for 1:N dedup."""

@@ -85,6 +85,8 @@ app/
   crypto.py        Ed25519 key load + PII hashing (key handling wrapped by Signer)
   audit.py         append-only audit log + structured log mirror
   security.py      P2P (X-API-Key) + staff (X-Admin-Key) auth + rate limiter
+  observability.py Prometheus HTTP + domain metrics (/metrics)
+  tracing.py       OpenTelemetry tracing seam (off unless KYC_OTEL_ENABLED)
   logging_config.py structlog setup
   main.py          FastAPI routes (/v1/..., JWKS at /.well-known/jwks.json)
   providers/       FaceMatcher + Signer + ObjectStorage + MrzReader + DedupIndex

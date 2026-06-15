@@ -14,6 +14,7 @@ spoofed read still fails validation.
 """
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 
 
@@ -31,8 +32,49 @@ class TextMrzReader(MrzReader):
         return lines[0], lines[1]
 
 
-class PassportEyeMrzReader(MrzReader):  # pragma: no cover - needs OCR stack
-    """Real OCR via PassportEye/Tesseract. Production seam, not run in CI."""
+def _image_suffix(image: bytes) -> str:
+    """Pick a temp-file extension matching the bytes so the image loader uses the
+    right decoder. (A wrong extension, e.g. ``.img``, makes imageio try ITK.)"""
+    if image[:3] == b"\xff\xd8\xff":
+        return ".jpg"
+    if image[:8] == b"\x89PNG\r\n\x1a\n":
+        return ".png"
+    return ".jpg"
+
+
+def _clean(value: str | None) -> str:
+    return re.sub(r"[^A-Z0-9<]", "<", (value or "").upper())
+
+
+def _reconstruct_td3(d: dict) -> tuple[str, str]:
+    """Rebuild canonical 44-char TD3 lines from PassportEye's parsed fields.
+
+    PassportEye uses the printed check digits to correct OCR slips, so its parsed
+    fields are more reliable than the raw OCR text. We re-encode them into the two
+    MRZ lines; ``validate_td3`` then re-verifies the check digits independently."""
+    doc = (d.get("type") or "P<")[:2].ljust(2, "<")
+    country = _clean(d.get("country"))[:3].ljust(3, "<")
+    surname = "<".join(re.sub(r"[^A-Z ]", " ", (d.get("surname") or "").upper()).split())
+    given = "<".join(re.sub(r"[^A-Z ]", " ", (d.get("names") or "").upper()).split())
+    name = (f"{surname}<<{given}" if given else surname)[:39].ljust(39, "<")
+    line1 = (doc + country + name)[:44].ljust(44, "<")
+
+    number = _clean(d.get("number"))[:9].ljust(9, "<")
+    nationality = _clean(d.get("nationality"))[:3].ljust(3, "<")
+    personal = _clean(d.get("personal_number"))[:14].ljust(14, "<")
+    line2 = (
+        number + str(d.get("check_number", "<"))
+        + nationality + (d.get("date_of_birth") or "")[:6]
+        + str(d.get("check_date_of_birth", "<")) + (d.get("sex") or "<")[:1]
+        + (d.get("expiration_date") or "")[:6] + str(d.get("check_expiration_date", "<"))
+        + personal + str(d.get("check_personal_number", "<"))
+        + str(d.get("check_composite", "<"))
+    )
+    return line1, line2[:44].ljust(44, "<")
+
+
+class PassportEyeMrzReader(MrzReader):  # pragma: no cover - needs the OCR stack
+    """Real OCR via PassportEye + Tesseract. Production seam, not run in CI."""
 
     def read(self, image: bytes) -> tuple[str, str]:
         try:
@@ -44,13 +86,10 @@ class PassportEyeMrzReader(MrzReader):  # pragma: no cover - needs OCR stack
                 "PassportEyeMrzReader needs passporteye + tesseract; install them "
                 "or use KYC_MRZ_READER=text."
             ) from exc
-        with tempfile.NamedTemporaryFile(suffix=".img") as fh:
+        with tempfile.NamedTemporaryFile(suffix=_image_suffix(image)) as fh:
             fh.write(image)
             fh.flush()
             mrz = read_mrz(fh.name)
         if mrz is None:
             raise ValueError("OCR could not locate an MRZ in the image")
-        lines = mrz.aux["text"].splitlines()
-        if len(lines) < 2:
-            raise ValueError("OCR returned an incomplete MRZ")
-        return lines[0].strip(), lines[1].strip()
+        return _reconstruct_td3(mrz.to_dict())

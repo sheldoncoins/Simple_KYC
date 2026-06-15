@@ -6,6 +6,7 @@ import { Camera, Loader2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { LivenessChallenge, StatusResponse } from "@/lib/schemas";
 import { useLiveness } from "@/lib/liveness/useLiveness";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -16,6 +17,8 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { PrivacyNote } from "@/components/ui/privacy-note";
+import { LivenessGuide } from "./LivenessGuide";
 
 export function StepLiveness({
   sessionId,
@@ -33,7 +36,7 @@ export function StepLiveness({
   });
 
   return (
-    <Card>
+    <Card className="animate-in fade-in-50 slide-in-from-bottom-2">
       <CardHeader>
         <CardTitle>Liveness check</CardTitle>
         <CardDescription>
@@ -115,7 +118,12 @@ function LivenessRunner({
 
   return (
     <div className="space-y-4">
-      <div className="relative mx-auto aspect-[4/3] w-full max-w-sm overflow-hidden rounded-lg border bg-muted">
+      <div
+        className={cn(
+          "relative mx-auto aspect-[4/3] w-full max-w-sm overflow-hidden rounded-2xl border bg-muted",
+          liveness.status === "running" && "animate-ring-pulse",
+        )}
+      >
         <video
           ref={videoRef}
           playsInline
@@ -123,6 +131,16 @@ function LivenessRunner({
           // Mirror the front camera so the preview feels natural.
           className="size-full -scale-x-100 object-cover"
         />
+        {/* Face-framing oval to help the user position themselves. */}
+        {liveness.status === "running" && (
+          <svg className="pointer-events-none absolute inset-0 size-full" aria-hidden>
+            <ellipse
+              cx="50%" cy="46%" rx="32%" ry="40%"
+              fill="none" stroke="hsl(var(--primary))" strokeWidth="3"
+              strokeDasharray="6 6" opacity="0.8"
+            />
+          </svg>
+        )}
         {liveness.status === "idle" && (
           <div className="absolute inset-0 flex items-center justify-center">
             <Camera className="size-10 text-muted-foreground" aria-hidden />
@@ -131,15 +149,10 @@ function LivenessRunner({
       </div>
 
       {liveness.status === "running" && (
-        <div className="space-y-2">
-          <Progress
-            value={liveness.progress * 100}
-            label="Liveness progress"
-          />
-          <p
-            aria-live="assertive"
-            className="text-center text-lg font-medium"
-          >
+        <div className="space-y-3">
+          <Progress value={liveness.progress * 100} label="Liveness progress" />
+          <LivenessGuide action={liveness.currentAction} />
+          <p aria-live="assertive" className="text-center text-lg font-medium">
             {liveness.instruction}
           </p>
         </div>
@@ -162,10 +175,17 @@ function LivenessRunner({
       )}
 
       {(liveness.status === "idle" || liveness.status === "error") && (
-        <Button type="button" className="w-full" onClick={liveness.start}>
-          <Camera aria-hidden />
-          {liveness.status === "error" ? "Retry camera" : "Start camera"}
-        </Button>
+        <>
+          <Button type="button" className="w-full" onClick={liveness.start}>
+            <Camera aria-hidden />
+            {liveness.status === "error" ? "Retry camera" : "Start camera"}
+          </Button>
+          <PrivacyNote>
+            The camera runs entirely in your browser. We send only motion
+            measurements and a single still for the match — your video never
+            leaves this device.
+          </PrivacyNote>
+        </>
       )}
       {liveness.status === "loading" && (
         <Button type="button" className="w-full" disabled>

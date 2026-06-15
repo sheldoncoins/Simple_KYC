@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { PrivacyNote } from "@/components/ui/privacy-note";
 
 export function StepStart({
   onDone,
@@ -53,7 +54,7 @@ export function StepStart({
     (mutation.error instanceof ApiError ? mutation.error.detail : null);
 
   return (
-    <Card>
+    <Card className="animate-in fade-in-50 slide-in-from-bottom-2">
       <CardHeader>
         <CardTitle>Start verification</CardTitle>
         <CardDescription>
@@ -98,6 +99,11 @@ export function StepStart({
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+          <PrivacyNote>
+            We verify you once and keep no raw documents — your passport and
+            selfie are deleted after a short window; only an anonymous,
+            non-reversible template remains.
+          </PrivacyNote>
         </CardContent>
         <CardFooter>
           <Button type="submit" disabled={mutation.isPending} className="w-full">

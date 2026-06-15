@@ -36,6 +36,8 @@ export type DocumentSubmission = z.infer<typeof DocumentSubmission>;
 export const BiometricSubmission = z.object({
   selfie_ref: z.string(),
   person_seed: z.string(),
+  // Base64 JPEG selfie frame captured during liveness (for real face match).
+  selfie_b64: z.string().optional(),
 });
 export type BiometricSubmission = z.infer<typeof BiometricSubmission>;
 

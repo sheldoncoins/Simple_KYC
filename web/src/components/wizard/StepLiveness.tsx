@@ -80,24 +80,34 @@ function LivenessRunner({
   const liveness = useLiveness(videoRef, challenge.sequence);
 
   const submit = useMutation({
-    mutationFn: (frames: typeof liveness.frames) =>
+    mutationFn: ({
+      frames,
+      selfie,
+    }: {
+      frames: typeof liveness.frames;
+      selfie: string | null;
+    }) =>
       api.submitBiometrics(
         sessionId,
         challenge.nonce,
-        { selfie_ref: "webcam", person_seed: personSeed },
+        {
+          selfie_ref: "webcam",
+          person_seed: personSeed,
+          selfie_b64: selfie ?? undefined,
+        },
         frames,
       ),
     onSuccess: onDone,
   });
 
-  // When the user finishes the sequence, send the feature timeline once.
+  // When the user finishes the sequence, send the feature timeline + selfie once.
   const submitted = useRef(false);
   useEffect(() => {
     if (liveness.status === "done" && !submitted.current) {
       submitted.current = true;
-      submit.mutate(liveness.frames);
+      submit.mutate({ frames: liveness.frames, selfie: liveness.selfie });
     }
-  }, [liveness.status, liveness.frames, submit]);
+  }, [liveness.status, liveness.frames, liveness.selfie, submit]);
 
   const submitting = submit.isPending;
   const submitError =

@@ -28,7 +28,21 @@ export interface LivenessState {
   progress: number;
   /** Derived feature timeline to send to the server. */
   frames: Features[];
+  /** Base64 JPEG selfie grabbed at completion (for the 1:1 face match). */
+  selfie: string | null;
   error: string | null;
+}
+
+/** Grab a still frame from the live video as a base64 JPEG (no data: prefix). */
+function captureSelfie(video: HTMLVideoElement | null): string | null {
+  if (!video || !video.videoWidth) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(video, 0, 0); // raw (unmirrored) frame, matching reality
+  return canvas.toDataURL("image/jpeg", 0.9).split(",")[1] ?? null;
 }
 
 /**
@@ -46,6 +60,7 @@ export function useLiveness(
     instruction: INSTRUCTIONS[sequence[0]] ?? "",
     progress: 0,
     frames: [],
+    selfie: null,
     error: null,
   });
 
@@ -73,6 +88,7 @@ export function useLiveness(
     const next = stepRef.current + 1;
     stepRef.current = next;
     if (next >= sequence.length) {
+      const selfie = captureSelfie(videoRef.current); // grab before stopping the camera
       cleanup();
       setState((s) => ({
         ...s,
@@ -81,6 +97,7 @@ export function useLiveness(
         instruction: "All done — checking…",
         progress: 1,
         frames: framesRef.current,
+        selfie,
       }));
       return;
     }
@@ -90,7 +107,7 @@ export function useLiveness(
       instruction: INSTRUCTIONS[sequence[next]] ?? "",
       progress: next / sequence.length,
     }));
-  }, [sequence, cleanup]);
+  }, [sequence, cleanup, videoRef]);
 
   const detectCurrent = useCallback(
     (f: Features) => {

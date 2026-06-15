@@ -25,8 +25,12 @@ and build the UI. See `BUILD_PLAN.md` for the phased roadmap.
 - **No sanctions/PEP screening.** Removed by product decision. `VE` (Venezuela)
   still routes to manual review on risk grounds.
 - **Face embedding is a swappable model** (`app/providers/face.py`,
-  `FaceMatcher` interface). Back it with self-hosted InsightFace/ArcFace or a
-  cloud face API. The mock is deterministic-by-seed for tests.
+  `FaceMatcher` interface). `InsightFaceMatcher` (ArcFace) is implemented and does
+  the real 1:1 selfie↔passport compare on the actual images
+  (`KYC_FACE_MATCHER=insightface`); the deterministic seed-based mock is the
+  default for dev/tests. The matcher takes a `FaceMatchInput` (seeds for the mock,
+  image bytes for the real model); the selfie is captured in-browser during
+  liveness and the passport photo is the stored document image.
 - **Credential signing is swappable too** (`app/providers/signer.py`, `Signer`
   interface). `LocalEd25519Signer` is the dev fallback; `KmsSigner` is the
   production seam (`KYC_SIGNER=kms`) and is intentionally unimplemented -- don't

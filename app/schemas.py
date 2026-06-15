@@ -32,8 +32,12 @@ class DocumentSubmission(BaseModel):
 class BiometricSubmission(BaseModel):
     selfie_ref: str
     # Same seed as the document for a genuine applicant; a different seed
-    # simulates a face that doesn't match the ID.
+    # simulates a face that doesn't match the ID (used by the mock matcher).
     person_seed: str
+    # Base64 JPEG of a selfie frame captured during liveness. Used by the real
+    # face matcher (InsightFace) to compare against the passport photo. Optional
+    # so the deterministic mock flow (tests) still works without an image.
+    selfie_b64: str | None = None
 
 
 class StatusResponse(BaseModel):

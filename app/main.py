@@ -15,6 +15,7 @@ Endpoints map 1:1 to the product flow:
 """
 from __future__ import annotations
 
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -22,6 +23,7 @@ from contextlib import asynccontextmanager
 import jwt
 import structlog
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from app.config import ACCEPTED_ID_TYPES, policy_for
@@ -67,6 +69,21 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="KYC Verification Server", version="1.0", lifespan=lifespan)
+
+# The verification wizard (web/) calls this API cross-origin. Allowed origins are
+# configurable so production locks them down; dev defaults to the Next.js port.
+_cors_origins = [
+    o.strip()
+    for o in os.environ.get("KYC_CORS_ORIGINS", "http://localhost:3000").split(",")
+    if o.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")

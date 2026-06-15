@@ -96,6 +96,19 @@ Endpoints marked 🔑 require a P2P client API key (`X-API-Key`); see
 | GET  | `/v1/review` | pending manual-review queue |
 | POST | `/v1/review/{item_id}` | resolve a review item |
 
+## Verification wizard (web UI)
+
+`web/` is the applicant-facing wizard (Next.js App Router + TypeScript + Tailwind
++ shadcn-style UI): country/wallet → passport capture → in-browser MediaPipe
+liveness → result, against the `/v1` API. Liveness landmark extraction runs
+client-side (WASM); only the feature timeline is sent. See `web/README.md`.
+
+```bash
+cd web && cp .env.example .env.local && npm install && npm run dev
+```
+
+The API enables CORS for the wizard origin via `KYC_CORS_ORIGINS`.
+
 ## What's real vs. what to plug in
 
 | Component | Status |

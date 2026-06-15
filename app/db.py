@@ -1,5 +1,11 @@
-"""Database setup. SQLite for the reference build; swap the URL for Postgres
-in production (the models are vanilla SQLAlchemy 2.0 and port directly)."""
+"""Database setup.
+
+Postgres is the production target (``postgresql+psycopg://...`` via
+``KYC_DATABASE_URL``); SQLite stays the zero-config default for local runs and
+the test suite. The models are vanilla SQLAlchemy 2.0, so the same code serves
+both -- only the URL changes. Schema is owned by Alembic (``migrations/``) in
+production; ``init_db()`` is a convenience for the SQLite/dev path.
+"""
 from __future__ import annotations
 
 import os
@@ -10,11 +16,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 DATABASE_URL = os.environ.get("KYC_DATABASE_URL", "sqlite:///./kyc.db")
+_IS_SQLITE = DATABASE_URL.startswith("sqlite")
 
 engine = create_engine(
     DATABASE_URL,
     echo=False,
-    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
+    # SQLite needs cross-thread access for the dev server; Postgres benefits from
+    # pre-ping liveness checks that recycle connections the server has dropped.
+    connect_args={"check_same_thread": False} if _IS_SQLITE else {},
+    pool_pre_ping=not _IS_SQLITE,
 )
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 

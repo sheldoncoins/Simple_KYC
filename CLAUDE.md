@@ -56,7 +56,9 @@ India, Nigeria, Brazil, Mexico, Colombia, Argentina, Venezuela
 ```
 app/
   config.py        policy, thresholds, country registry
-  db.py            SQLAlchemy engine/session  (SQLite now → Postgres in prod)
+  db.py            SQLAlchemy engine/session  (Postgres via psycopg; SQLite for dev/tests)
+migrations/        Alembic env + versioned schema (owns the schema in prod)
+Dockerfile, docker-compose.yml   local dev stack: api + postgres
   models.py        ORM: User, IdentityRecord, VerificationSession, LedgerEntry,
                    ReviewItem, AuditLog
   schemas.py       Pydantic request/response
@@ -95,7 +97,15 @@ uvicorn app.main:app --reload     # API at /docs
 
 ruff check .                      # lint (E/F/W/I; E501 -> formatter)
 mypy                              # type-check app/ + run_demo.py
+
+docker compose up --build         # Postgres + API (migrations run on start)
+alembic upgrade head              # apply schema; alembic revision --autogenerate -m "msg"
 ```
+
+Database: Postgres in prod/dev (`postgresql+psycopg://…` via `KYC_DATABASE_URL`),
+SQLite for the demo/tests. Alembic (`migrations/`) owns the schema; after
+changing `models.py`, generate a migration and keep `migrations/` excluded from
+ruff (it is Alembic-managed).
 
 Tooling config lives in `pyproject.toml`; CI (`.github/workflows/ci.yml`) runs
 lint + type-check + tests on every push. Copy `.env.example` -> `.env` for the

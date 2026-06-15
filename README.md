@@ -46,18 +46,33 @@ countries and near-duplicates (e.g. twins) go to review.
 
 ## Run it
 
+### Docker (Postgres + API)
+
+```bash
+docker compose up --build          # Postgres + API; runs migrations on start
+                                   # API at http://localhost:8000/docs
+```
+
+### Local (Python)
+
 ```bash
 pip install -r requirements.txt          # runtime only
 # or: pip install -r requirements-dev.txt # + ruff/mypy/pytest/pre-commit
 
-cp .env.example .env                      # optional: override defaults
+cp .env.example .env                      # set KYC_DATABASE_URL (Postgres or SQLite)
+alembic upgrade head                      # apply schema (Postgres); SQLite works too
 
 python run_demo.py                 # narrated end-to-end demo, no server
-python -m pytest tests/ -v         # full test suite
+python -m pytest tests/ -v         # full test suite (runs on SQLite)
 uvicorn app.main:app --reload      # HTTP API at http://127.0.0.1:8000/docs
 
 ruff check . && mypy               # lint + type-check (also enforced in CI)
 ```
+
+The app is database-agnostic via SQLAlchemy 2.0: **Postgres** is the
+production/dev target (`postgresql+psycopg://…`), and **SQLite** is the
+zero-config default used by the demo and tests. Schema is owned by **Alembic**
+migrations in `migrations/`.
 
 ## API
 
@@ -91,7 +106,8 @@ ruff check . && mypy               # lint + type-check (also enforced in CI)
 
 ## Production hardening (before real money)
 
-Key in a KMS/HSM (not on disk); Postgres instead of SQLite; rate limiting and
+Key in a KMS/HSM (not on disk); ~~Postgres instead of SQLite~~ (done — Postgres
++ Alembic migrations); rate limiting and
 abuse controls on onboarding; encryption at rest for biometric templates +
 strict retention/deletion under DPDP/LGPD/NDPA; revocation list for
 credentials; and a legal review of money-transmission/VASP obligations in each

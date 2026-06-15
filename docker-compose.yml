@@ -1,0 +1,36 @@
+# Local dev stack: Postgres + the API. Bring it up with:
+#   docker compose up --build
+# The API waits for Postgres to be healthy, runs `alembic upgrade head`, then
+# serves on http://localhost:8000 (docs at /docs).
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: kyc
+      POSTGRES_PASSWORD: kyc
+      POSTGRES_DB: kyc
+    ports:
+      - "5432:5432"
+    volumes:
+      - kyc_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kyc -d kyc"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    environment:
+      KYC_DATABASE_URL: postgresql+psycopg://kyc:kyc@db:5432/kyc
+      KYC_LOG_FORMAT: console
+      # Override these per-deployment; defaults here are dev-only.
+      KYC_PII_SALT: dev-pii-salt-change-me
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  kyc_pgdata:

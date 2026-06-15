@@ -16,12 +16,14 @@ from __future__ import annotations
 
 import os
 
+from arq import cron
 from arq.connections import RedisSettings
 
 from app.db import session_scope
 from app.logging_config import configure_logging, get_logger
 from app.schemas import BiometricSubmission
 from app.services import verification
+from app.services.retention import purge_expired
 
 log = get_logger("worker")
 
@@ -36,6 +38,14 @@ async def process_biometrics(
              decision=sess.decision.value if sess.decision else None)
 
 
+async def purge_media(ctx: dict) -> None:
+    """Hourly retention sweep: delete raw media whose TTL has lapsed, so uploads
+    are gone within the retention window (default 24h) + an hour."""
+    with session_scope() as db:
+        purged = purge_expired(db)
+    log.info("retention_purge", purged=purged)
+
+
 async def startup(ctx: dict) -> None:
     configure_logging()
     log.info("worker_startup")
@@ -43,6 +53,7 @@ async def startup(ctx: dict) -> None:
 
 class WorkerSettings:
     functions = [process_biometrics]
+    cron_jobs = [cron(purge_media, minute=0)]  # top of every hour
     on_startup = startup
     redis_settings = RedisSettings.from_dsn(
         os.environ.get("KYC_REDIS_URL", "redis://localhost:6379")

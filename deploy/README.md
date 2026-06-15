@@ -32,8 +32,22 @@ kubectl apply -f k8s/data.yaml          # or use managed Postgres (pgvector) + R
 kubectl apply -f k8s/api.yaml           # includes the migration Job
 kubectl apply -f k8s/worker.yaml
 kubectl apply -f k8s/web.yaml
+kubectl apply -f k8s/cronjob.yaml       # hourly retention purge
 kubectl apply -f k8s/ingress.yaml
 ```
+
+### Retention / data deletion
+
+Raw media (passport images, selfies) is encrypted and given a TTL
+(`KYC_MEDIA_RETENTION_SECONDS`, default **24h**). It is actually deleted by a
+**purge sweep that runs hourly** — two ways, so it always runs:
+
+- the **arq worker** runs `purge_media` on a cron (top of every hour), and
+- `k8s/cronjob.yaml` runs `python -m app.jobs.purge_media` hourly as a standalone
+  CronJob (for deployments without the worker).
+
+So raw uploads are removed within the retention window + ~1h. Only derived
+templates / hashes / ledger / audit persist.
 
 Build + push the images referenced by the manifests first:
 

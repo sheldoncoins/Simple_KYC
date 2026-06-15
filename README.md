@@ -18,8 +18,8 @@ embedding (see "What's real vs. what to plug in").
   (`app/services/liveness.py`): randomized action sequence + single-use nonce.
   Only the per-frame landmark extraction needs an open-source, self-hosted
   model (MediaPipe Face Mesh / dlib) — not a paid SaaS.
-* **No sanctions/PEP screening.** (Venezuela + USDC/OFAC remains a legal
-  question handled outside this system; `VE` still routes to manual review.)
+* **No sanctions/PEP screening.** (`VE` still routes to manual review on risk
+  grounds.)
 
 Net result: **no paid third-party KYC vendor is required** — only self-hosted
 open-source models.
@@ -151,15 +151,13 @@ The API enables CORS for the wizard origin via `KYC_CORS_ORIGINS`.
 > **Read this first.** This repo is a *tested reference backend*, not a
 > production-ready service. The topology below is real and the manifests work,
 > but you **must** clear the blockers in [Before real money](#before-real-money)
-> — above all a real KMS signer — before handling live funds or real PII.
-> Nothing here is legal or compliance advice.
+> — above all a real KMS signer — before handling live funds.
 
 ### Recommended platform
 
-Run it on managed Kubernetes (or a managed container service) in a region with
-**Indian data residency** — biometric + identity data under the DPDP Act 2023,
-plus your VASP/AML posture, makes Mumbai the sensible home. The reference mapping
-is **AWS `ap-south-1` (Mumbai)**; GCP (`asia-south1`) maps one-to-one.
+Run it on managed Kubernetes (or a managed container service) in a region close
+to your users — for India that's **Mumbai**. The reference mapping is
+**AWS `ap-south-1` (Mumbai)**; GCP (`asia-south1`) maps one-to-one.
 
 | Need | Service (AWS `ap-south-1`) | Wires to |
 |---|---|---|
@@ -192,7 +190,7 @@ deltas:
 | Postgres + pgvector | **UDB PostgreSQL** if `vector` is whitelisted, else self-host | `KYC_DATABASE_URL`, `KYC_DEDUP_BACKEND=pgvector` |
 | Load balancer / ingress | **ULB** + UK8S ingress | `deploy/k8s/ingress.yaml` |
 | Image registry | **UHub** (or Docker Hub) | — |
-| Region | **Mumbai** | data residency |
+| Region | **Mumbai** | close to India users |
 
 **US3 (object storage).** US3 speaks the S3 API, so the built-in `S3Storage`
 backend works against it unchanged — just point boto3 at the US3 endpoint:
@@ -282,7 +280,7 @@ Standing up the infrastructure is **not** the same as being safe to launch.
 What was hardened already: Postgres + Alembic, a swappable `Signer` with JWKS +
 key rotation, P2P/staff auth, rate limiting, credential revocation, encrypted-at-
 rest media with a retention purge, and pgvector dedup. Still **required** before
-live funds or real PII:
+live funds:
 
 - [ ] **Implement `KmsSigner`** (`app/providers/signer.py`) — the dev signer
       keeps the Ed25519 key on disk; production keys must live in a KMS/HSM.
@@ -292,13 +290,9 @@ live funds or real PII:
       defences; the self-built active check doesn't stop deepfakes.
 - [ ] **Robust MRZ OCR (or NFC chip read)** — the OCR reader is a starting seam
       and misreads real photos; check-digit validation stays deterministic.
-- [ ] **DSAR / right-to-erasure + DPIA** — biometric data under DPDP 2023 / LGPD
-      / NDPA needs a per-user deletion flow and an impact assessment.
-- [ ] **AML / regulatory** — FIU-IND registration, PMLA + suspicious-transaction
-      reporting, and sanctions screening (intentionally absent) for an India VDA/VASP.
+- [ ] **Per-user data deletion** — add a flow to erase a specific user's stored
+      data on request; today only the time-based media purge exists.
 - [ ] **Transaction-layer fraud monitoring** — this service verifies a *unique
       live human*, not honest funds; pair it with fiat-rail + coordination
       analytics (the mule-farm gap).
 - [ ] **Security review + pen test** of the biometric template store and signing path.
-
-This code does not constitute legal or compliance advice.

@@ -1,0 +1,5 @@
+# Optional: real passport-image MRZ reading (KYC_MRZ_READER=ocr).
+# Also requires the Tesseract binary on the host:
+#   macOS:  brew install tesseract
+#   Debian: apt-get install tesseract-ocr
+passporteye==2.2.2

@@ -10,7 +10,7 @@ the root README's *Deploying to production* section.
 > the root README's *Before real money* checklist; everything else (Postgres +
 > pgvector, encrypted media + retention, real OCR + face match, arq worker, TLS,
 > auth, rate limiting) is the production path. Don't handle real funds until the
-> signer is moved to a KMS/HSM. Not legal or compliance advice.
+> signer is moved to a KMS/HSM.
 
 ## What you get
 

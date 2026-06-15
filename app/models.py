@@ -18,8 +18,17 @@ from __future__ import annotations
 import datetime as dt
 import enum
 
-from sqlalchemy import (JSON, DateTime, Enum, Float, ForeignKey, Integer,
-                        String, Text, UniqueConstraint)
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base

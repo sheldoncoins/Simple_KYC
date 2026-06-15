@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.config import (FACE_MATCH_MIN_SCORE, LIVENESS_MIN_SCORE)
 from app.models import Decision
 
 

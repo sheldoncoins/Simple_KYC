@@ -6,8 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import audit
-from app.models import (Decision, ReviewItem, SessionStatus,
-                        VerificationSession)
+from app.models import Decision, ReviewItem, SessionStatus, VerificationSession
 
 
 def enqueue(db: Session, session_id: int, reason: str, payload: dict) -> ReviewItem:
@@ -26,6 +25,7 @@ def resolve(db: Session, item_id: int, resolution: str, reviewer: str):
     if item is None or item.resolved:
         raise ValueError("review_item_not_found_or_resolved")
     sess = db.get(VerificationSession, item.session_id)
+    assert sess is not None  # FK invariant: a review item always has its session
 
     item.resolved = True
     item.resolution = resolution

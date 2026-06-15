@@ -78,16 +78,28 @@ run_demo.py        narrated no-HTTP demo
 - New vendor-replaceable capabilities go behind an interface in `providers/`,
   never inline in services.
 - Append-only `audit.record(...)` for any state-changing action.
+- Structured logging via `structlog`: get a logger with
+  `logging_config.get_logger(__name__)`, log events as key/value pairs (not
+  f-strings), and never log PII -- ids/hashes/decisions only.
 - Tests must stay green; add a test for every new decision path.
 
 ## Commands
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # runtime + tooling (deps are pinned)
+pre-commit install                    # ruff + mypy + hygiene hooks on commit
+
 python -m pytest tests/ -v        # full suite
 python run_demo.py                # narrated flow
 uvicorn app.main:app --reload     # API at /docs
+
+ruff check .                      # lint (E/F/W/I; E501 -> formatter)
+mypy                              # type-check app/ + run_demo.py
 ```
+
+Tooling config lives in `pyproject.toml`; CI (`.github/workflows/ci.yml`) runs
+lint + type-check + tests on every push. Copy `.env.example` -> `.env` for the
+environment variables the app reads.
 
 ## Guardrails for changes
 

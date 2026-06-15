@@ -47,11 +47,16 @@ countries and near-duplicates (e.g. twins) go to review.
 ## Run it
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt          # runtime only
+# or: pip install -r requirements-dev.txt # + ruff/mypy/pytest/pre-commit
+
+cp .env.example .env                      # optional: override defaults
 
 python run_demo.py                 # narrated end-to-end demo, no server
-python -m pytest tests/ -v         # full test suite (8 tests)
+python -m pytest tests/ -v         # full test suite
 uvicorn app.main:app --reload      # HTTP API at http://127.0.0.1:8000/docs
+
+ruff check . && mypy               # lint + type-check (also enforced in CI)
 ```
 
 ## API

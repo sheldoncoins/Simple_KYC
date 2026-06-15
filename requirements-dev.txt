@@ -1,0 +1,7 @@
+# Dev/test/CI tooling (pinned). Installs runtime deps too.
+-r requirements.txt
+pytest==9.1.0
+httpx==0.28.1
+ruff==0.15.17
+mypy==2.1.0
+pre-commit==4.6.0

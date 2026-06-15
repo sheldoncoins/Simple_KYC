@@ -13,13 +13,11 @@ from app import audit
 from app.config import DEFAULT_LIMIT_USDC, policy_for
 from app.crypto import identity_hash as make_identity_hash
 from app.crypto import pii_hash
-from app.models import (Decision, IdentityRecord, SessionStatus, User,
-                        VerificationSession)
+from app.models import Decision, IdentityRecord, SessionStatus, User, VerificationSession
 from app.providers.registry import face_matcher
 from app.schemas import BiometricSubmission, DocumentSubmission, OnboardRequest
 from app.services import dedup, liveness, review, risk
 from app.services.mrz import validate_td3
-
 
 # --- Onboarding -----------------------------------------------------------
 
@@ -138,6 +136,7 @@ def finalize_identity(db: Session, sess: VerificationSession) -> IdentityRecord:
     """Create the unique IdentityRecord and bind the limit. Used by both
     auto-approval and manual review approval."""
     user = db.get(User, sess.user_id)
+    assert user is not None  # FK invariant: a session always has its user
     ih = make_identity_hash(user.country, sess.signals["person_seed"])
 
     rec = db.scalar(select(IdentityRecord).where(IdentityRecord.identity_hash == ih))

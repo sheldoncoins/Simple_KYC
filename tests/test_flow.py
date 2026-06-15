@@ -17,12 +17,11 @@ _tmp = tempfile.mkdtemp()
 os.environ["KYC_DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"
 os.environ["KYC_SIGNING_KEY_PATH"] = f"{_tmp}/key.pem"
 
-from fastapi.testclient import TestClient  # noqa: E402
-
 from app.db import init_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.services import liveness  # noqa: E402
 from app.services.mrz_demo import make_mrz  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
 init_db()
 client = TestClient(app)

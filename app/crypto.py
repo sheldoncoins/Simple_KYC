@@ -13,8 +13,7 @@ import hmac
 import os
 
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import (
-    Ed25519PrivateKey, Ed25519PublicKey)
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 _KEY_PATH = os.environ.get("KYC_SIGNING_KEY_PATH", "./signing_key.pem")
 # In production this salt comes from a secret manager, per-deployment.
@@ -24,7 +23,12 @@ _PII_SALT = os.environ.get("KYC_PII_SALT", "dev-pii-salt-change-me").encode()
 def _load_or_create_key() -> Ed25519PrivateKey:
     if os.path.exists(_KEY_PATH):
         with open(_KEY_PATH, "rb") as fh:
-            return serialization.load_pem_private_key(fh.read(), password=None)
+            key = serialization.load_pem_private_key(fh.read(), password=None)
+        # The signer only issues Ed25519 credentials; reject any other key type
+        # loudly rather than limping on with a key the rest of the code can't use.
+        if not isinstance(key, Ed25519PrivateKey):
+            raise TypeError(f"signing key at {_KEY_PATH} is not Ed25519")
+        return key
     key = Ed25519PrivateKey.generate()
     pem = key.private_bytes(
         encoding=serialization.Encoding.PEM,

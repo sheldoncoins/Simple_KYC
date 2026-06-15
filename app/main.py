@@ -15,28 +15,73 @@ Endpoints map 1:1 to the product flow:
 """
 from __future__ import annotations
 
+import time
+import uuid
 from contextlib import asynccontextmanager
 
 import jwt
-from fastapi import Depends, FastAPI, HTTPException
+import structlog
+from fastapi import Depends, FastAPI, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.config import ACCEPTED_ID_TYPES, policy_for
 from app.db import get_session, init_db
+from app.logging_config import configure_logging, get_logger
 from app.models import SessionStatus
-from app.schemas import (BiometricSubmission, CredentialResponse, DebitRequest,
-                        DocumentSubmission, LedgerResponse, OnboardRequest,
-                        OnboardResponse, ReviewResolution, StatusResponse,
-                        VerifyCredentialRequest, VerifyCredentialResponse)
+from app.schemas import (
+    BiometricSubmission,
+    CredentialResponse,
+    DebitRequest,
+    DocumentSubmission,
+    LedgerResponse,
+    OnboardRequest,
+    OnboardResponse,
+    ReviewResolution,
+    StatusResponse,
+    VerifyCredentialRequest,
+    VerifyCredentialResponse,
+)
 from app.services import credentials, ledger, liveness, review, verification
+
+log = get_logger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    configure_logging()
     init_db()
+    log.info("startup", service="kyc", version="1.0")
     yield
 
 
 app = FastAPI(title="KYC Verification Server", version="1.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Emit one structured event per request with a correlation id.
+
+    The id is bound into contextvars so any log emitted while handling the
+    request carries it too. Only method/path/status/duration are logged -- never
+    request bodies, which may hold PII.
+    """
+    request_id = uuid.uuid4().hex
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    finally:
+        elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+    log.info(
+        "request",
+        method=request.method,
+        path=request.url.path,
+        status=response.status_code,
+        duration_ms=elapsed_ms,
+    )
+    response.headers["X-Request-ID"] = request_id
+    structlog.contextvars.clear_contextvars()
+    return response
 
 
 @app.post("/v1/onboard", response_model=OnboardResponse)
@@ -97,6 +142,9 @@ def issue_credential(session_id: int, db: Session = Depends(get_session)):
     if sess.status != SessionStatus.approved:
         raise HTTPException(409, f"not_approved: status={sess.status.value}")
     user = db.get(User, sess.user_id)
+    # Invariants for an approved session: the user exists (FK) and its identity
+    # was bound during finalization. Assert to narrow the Optionals for mypy.
+    assert user is not None and user.identity is not None
     bal = ledger.balance(db, user.identity.identity_hash)
     token, ttl = credentials.issue(user.identity.identity_hash,
                                     user.wallet_pubkey, bal.remaining_usdc)

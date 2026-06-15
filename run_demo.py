@@ -14,6 +14,12 @@ import tempfile
 _tmp = tempfile.mkdtemp()
 os.environ.setdefault("KYC_DATABASE_URL", f"sqlite:///{_tmp}/demo.db")
 os.environ.setdefault("KYC_SIGNING_KEY_PATH", f"{_tmp}/key.pem")
+# Keep the narrated output readable: only warnings+ from the structured logger.
+os.environ.setdefault("KYC_LOG_LEVEL", "WARNING")
+
+from app.logging_config import configure_logging
+
+configure_logging()
 
 from app.db import init_db, session_scope
 from app.schemas import BiometricSubmission, DocumentSubmission, OnboardRequest
@@ -47,6 +53,7 @@ def enroll(wallet, country, seed, selfie_seed=None, good=True):
         sess = verification.submit_biometrics(
             db, sid, BiometricSubmission(selfie_ref="s", person_seed=selfie_seed),
             ch.nonce, frames)
+        assert sess.decision is not None  # set once biometrics are scored
         return sid, sess.decision.value, sess.reject_reason
 
 
@@ -61,7 +68,9 @@ def main():
     line("decision", decision)
     with session_scope() as db:
         from app.models import User
-        ih = db.query(User).filter_by(wallet_pubkey="wallet_alice").one().identity.identity_hash
+        alice = db.query(User).filter_by(wallet_pubkey="wallet_alice").one()
+        assert alice.identity is not None  # approved above, so identity is bound
+        ih = alice.identity.identity_hash
         token, _ = credentials.issue(ih, "wallet_alice", 100.0)
     claims = credentials.verify(token)
     line("identity_hash", ih[:24] + "...")

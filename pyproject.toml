@@ -35,6 +35,11 @@ warn_unused_ignores = true
 no_implicit_optional = true
 plugins = ["pydantic.mypy"]
 
+# Optional production-only deps, lazily imported inside provider seams.
+[[tool.mypy.overrides]]
+module = ["boto3", "passporteye"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Run the suite without an editable install: `app` imports resolve from the root.

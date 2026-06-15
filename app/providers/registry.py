@@ -6,7 +6,9 @@ import os
 
 from app.providers.base import FaceMatcher
 from app.providers.face import MockFaceMatcher
+from app.providers.mrz_reader import MrzReader, PassportEyeMrzReader, TextMrzReader
 from app.providers.signer import KmsSigner, LocalEd25519Signer, Signer
+from app.providers.storage import LocalEncryptedStorage, ObjectStorage, S3Storage
 
 _face_matcher: FaceMatcher = MockFaceMatcher()
 
@@ -44,3 +46,49 @@ def set_signer(impl: Signer | None) -> None:
     """Override (or reset, with None) the signer -- used by tests."""
     global _signer
     _signer = impl
+
+
+# --- Object storage ---------------------------------------------------------
+_storage: ObjectStorage | None = None
+
+
+def _build_storage() -> ObjectStorage:
+    backend = os.environ.get("KYC_STORAGE_BACKEND", "local").strip().lower()
+    if backend == "s3":
+        return S3Storage()
+    return LocalEncryptedStorage()
+
+
+def storage() -> ObjectStorage:
+    global _storage
+    if _storage is None:
+        _storage = _build_storage()
+    return _storage
+
+
+def set_storage(impl: ObjectStorage | None) -> None:
+    global _storage
+    _storage = impl
+
+
+# --- MRZ reader -------------------------------------------------------------
+_mrz_reader: MrzReader | None = None
+
+
+def _build_mrz_reader() -> MrzReader:
+    backend = os.environ.get("KYC_MRZ_READER", "text").strip().lower()
+    if backend == "ocr":
+        return PassportEyeMrzReader()
+    return TextMrzReader()
+
+
+def mrz_reader() -> MrzReader:
+    global _mrz_reader
+    if _mrz_reader is None:
+        _mrz_reader = _build_mrz_reader()
+    return _mrz_reader
+
+
+def set_mrz_reader(impl: MrzReader | None) -> None:
+    global _mrz_reader
+    _mrz_reader = impl

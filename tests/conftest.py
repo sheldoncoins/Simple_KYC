@@ -7,6 +7,7 @@ them; the dedicated rate-limit test lowers them locally.
 """
 from __future__ import annotations
 
+import base64
 import os
 import tempfile
 
@@ -18,6 +19,9 @@ os.environ["KYC_SIGNING_KEY_PATH"] = f"{_tmp}/key.pem"
 os.environ["KYC_P2P_API_KEYS"] = "test-p2p-key,other-key"
 os.environ["KYC_RATELIMIT_ONBOARD_PER_MIN"] = "1000"
 os.environ["KYC_RATELIMIT_BIOMETRIC_PER_MIN"] = "1000"
+os.environ["KYC_STORAGE_DIR"] = f"{_tmp}/media"
+os.environ["KYC_STORAGE_KEY"] = base64.b64encode(b"0" * 32).decode()
+os.environ.setdefault("KYC_MRZ_READER", "text")
 os.environ.setdefault("KYC_LOG_FORMAT", "console")
 
 P2P_KEY = "test-p2p-key"

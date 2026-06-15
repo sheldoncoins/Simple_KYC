@@ -21,14 +21,14 @@ from contextlib import asynccontextmanager
 
 import jwt
 import structlog
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.config import ACCEPTED_ID_TYPES, policy_for
 from app.db import get_session, init_db
 from app.logging_config import configure_logging, get_logger
 from app.models import SessionStatus
-from app.providers.registry import signer
+from app.providers.registry import mrz_reader, signer
 from app.schemas import (
     BiometricSubmission,
     CredentialResponse,
@@ -45,7 +45,15 @@ from app.schemas import (
     VerifyCredentialResponse,
 )
 from app.security import rate_limit, require_p2p_client
-from app.services import credentials, ledger, liveness, review, revocation, verification
+from app.services import (
+    credentials,
+    ledger,
+    liveness,
+    media,
+    review,
+    revocation,
+    verification,
+)
 
 log = get_logger(__name__)
 
@@ -111,6 +119,32 @@ def onboard(req: OnboardRequest, db: Session = Depends(get_session)):
 @app.post("/v1/sessions/{session_id}/passport", response_model=StatusResponse)
 def submit_passport(session_id: int, sub: DocumentSubmission,
                     db: Session = Depends(get_session)):
+    try:
+        sess = verification.submit_passport(db, session_id, sub)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    return _status(sess)
+
+
+@app.post("/v1/sessions/{session_id}/passport/image", response_model=StatusResponse)
+async def submit_passport_image(session_id: int,
+                                person_seed: str = Form(...),
+                                file: UploadFile = File(...),
+                                db: Session = Depends(get_session)):
+    """Upload a passport image: store it encrypted (short retention), read the
+    MRZ off it server-side, then run the existing deterministic validation.
+
+    OCR extraction is a swappable provider (``KYC_MRZ_READER``); the check-digit
+    validation in ``services/mrz`` is unchanged, so a bad read still fails."""
+    image = await file.read()
+    media.store(db, kind="passport_image", data=image,
+                content_type=file.content_type, session_id=session_id)
+    try:
+        line1, line2 = mrz_reader().read(image)
+    except ValueError as e:
+        raise HTTPException(422, f"mrz_unreadable: {e}")
+    sub = DocumentSubmission(id_type="passport", mrz_line1=line1, mrz_line2=line2,
+                             person_seed=person_seed)
     try:
         sess = verification.submit_passport(db, session_id, sub)
     except ValueError as e:

@@ -155,6 +155,24 @@ class AuditLog(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class MediaObject(Base):
+    """Pointer to an uploaded blob (passport image, liveness clip) held in
+    object storage. The bytes live encrypted in storage, never in this row; we
+    keep only the ref and a retention deadline. The purge job deletes the blob
+    and stamps ``deleted_at`` once ``expires_at`` passes -- raw media is never
+    kept long-term, only derived templates are."""
+    __tablename__ = "media_objects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    session_id: Mapped[int | None] = mapped_column(ForeignKey("sessions.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)  # passport_image | liveness_clip
+    storage_ref: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str | None] = mapped_column(String(80))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime, index=True)
+    deleted_at: Mapped[dt.datetime | None] = mapped_column(DateTime)
+
+
 class RevokedCredential(Base):
     """Credential revocation list. Credentials are short-lived, so this only has
     to outlast the TTL; a row revokes either a single token (by ``jti``) or every

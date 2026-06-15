@@ -31,6 +31,14 @@ and build the UI. See `BUILD_PLAN.md` for the phased roadmap.
   interface). `LocalEd25519Signer` is the dev fallback; `KmsSigner` is the
   production seam (`KYC_SIGNER=kms`) and is intentionally unimplemented -- don't
   fake it. Tokens carry a `kid`; public keys are served at `/.well-known/jwks.json`.
+- **Media storage and MRZ-OCR are swappable seams too**
+  (`app/providers/storage.py`, `app/providers/mrz_reader.py`). Local encrypted
+  storage + a text MRZ reader drive dev/tests; `S3Storage` and
+  `PassportEyeMrzReader` are the production seams (`KYC_STORAGE_BACKEND=s3`,
+  `KYC_MRZ_READER=ocr`). Raw uploads are encrypted at rest and purged after a
+  retention TTL (`app/services/retention.py`, `app/jobs/purge_media.py`) -- only
+  derived templates persist. MRZ *validation* stays deterministic regardless of
+  how the lines were read.
 
 ## The one idea everything protects
 
@@ -62,16 +70,18 @@ app/
   config.py        policy, thresholds, country registry
   db.py            SQLAlchemy engine/session (Postgres via psycopg; SQLite for dev/tests)
   models.py        ORM: User, IdentityRecord, VerificationSession, LedgerEntry,
-                   ReviewItem, AuditLog, RevokedCredential
+                   ReviewItem, AuditLog, RevokedCredential, MediaObject
   schemas.py       Pydantic request/response
   crypto.py        Ed25519 key load + PII hashing (key handling wrapped by Signer)
   audit.py         append-only audit log + structured log mirror
   security.py      P2P API-key auth + in-process rate limiter
   logging_config.py structlog setup
   main.py          FastAPI routes (/v1/..., JWKS at /.well-known/jwks.json)
-  providers/       FaceMatcher + Signer interfaces + mocks + registry (swap point)
+  providers/       FaceMatcher + Signer + ObjectStorage + MrzReader interfaces,
+                   mocks/local fallbacks + registry (swap point)
   services/        mrz, liveness, dedup, risk, credentials, ledger, review,
-                   revocation, verification (orchestrator)
+                   revocation, media, retention, verification (orchestrator)
+  jobs/            purge_media (retention deletion job)
 migrations/        Alembic env + versioned schema (owns the schema in prod)
 Dockerfile, docker-compose.yml   local dev stack: api + postgres
 tests/             pytest suite (conftest + _helpers shared)

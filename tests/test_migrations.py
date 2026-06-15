@@ -15,7 +15,7 @@ from sqlalchemy import create_engine, inspect
 ROOT = Path(__file__).resolve().parent.parent
 EXPECTED_TABLES = {
     "users", "identities", "sessions", "ledger", "review_queue", "audit_log",
-    "revoked_credentials",
+    "revoked_credentials", "media_objects",
 }
 
 

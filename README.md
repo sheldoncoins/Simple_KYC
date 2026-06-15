@@ -82,7 +82,8 @@ Endpoints marked 🔑 require a P2P client API key (`X-API-Key`); see
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/v1/onboard` | start a verification session (rate-limited) |
-| POST | `/v1/sessions/{id}/passport` | submit passport (MRZ validated) |
+| POST | `/v1/sessions/{id}/passport` | submit passport MRZ lines (text) |
+| POST | `/v1/sessions/{id}/passport/image` | upload passport image → server-side MRZ read → validation |
 | GET  | `/v1/liveness/challenge` | issue randomized liveness challenge |
 | POST | `/v1/sessions/{id}/biometrics` | submit selfie + liveness → decision (rate-limited) |
 | GET  | `/v1/sessions/{id}` | session status + signals |
@@ -108,7 +109,10 @@ Endpoints marked 🔑 require a P2P client API key (`X-API-Key`); see
 | P2P client auth (API key) + rate limiting | **Real** — in-process limiter |
 | Identity-bound limit ledger (idempotent) | **Real** |
 | Risk engine, review queue, audit log | **Real** |
+| Media storage encrypted at rest + retention/purge | **Real** — local AES-256-GCM; purge job deletes expired raw media |
 | KMS/HSM-backed signing | Plug in — implement `KmsSigner` in `app/providers/signer.py` (`KYC_SIGNER=kms`); local Ed25519 is the dev fallback |
+| S3-compatible object storage | Plug in — `S3Storage` (`KYC_STORAGE_BACKEND=s3`, needs `boto3`); local encrypted store is the dev fallback |
+| Passport MRZ OCR (read from image) | Plug in — `PassportEyeMrzReader` (`KYC_MRZ_READER=ocr`); the text reader drives dev/tests. Validation stays deterministic |
 | Liveness landmark extraction | Plug in MediaPipe / dlib (self-hosted) |
 | Face embedding (1:1 + 1:N) | Plug in InsightFace/ArcFace (self-hosted) or a face API — implement `FaceMatcher` in `app/providers/face.py` |
 | Dedup index at scale | Swap linear scan for FAISS / pgvector (logic unchanged) |
@@ -117,10 +121,12 @@ Endpoints marked 🔑 require a P2P client API key (`X-API-Key`); see
 
 Done in Phase 1: Postgres + Alembic migrations; a swappable `Signer` with a JWKS
 endpoint and key-rotation support; P2P client API-key auth; rate limiting on
-onboarding + biometric submission; and credential revocation. Still outstanding
-before real money: a real **KMS/HSM** signer (the `KmsSigner` seam — keys must
-leave disk); a distributed rate limiter (Redis/edge); encryption at rest for
-biometric templates + strict retention/deletion under DPDP/LGPD/NDPA; staff auth
-on the review/admin endpoints; and a legal review of money-transmission/VASP
-obligations in each market. This code does not constitute legal or compliance
-advice.
+onboarding + biometric submission; and credential revocation. Done in Phase 2:
+media uploads to encrypted-at-rest object storage (local AES-GCM or S3) with a
+retention TTL + purge job, and server-side MRZ reading from a passport image
+(deterministic validation unchanged). Still outstanding before real money: a real
+**KMS/HSM** signer (the `KmsSigner` seam — keys must leave disk); production
+object storage on S3/KMS; a real OCR backend; a distributed rate limiter
+(Redis/edge); staff auth on the review/admin endpoints; a full DSAR/deletion flow
+and DPIA; and a legal review of money-transmission/VASP obligations in each
+market. This code does not constitute legal or compliance advice.

@@ -137,7 +137,7 @@ The API enables CORS for the wizard origin via `KYC_CORS_ORIGINS`.
 | Staff auth + review/audit/metrics API | **Real** — `X-Admin-Key`; admin console UI is Phase 5b |
 | Identity-bound limit ledger (idempotent) | **Real** |
 | Risk engine, review queue, audit log | **Real** |
-| Media storage encrypted at rest + retention/purge | **Real** — local AES-256-GCM; purge job deletes expired raw media |
+| Media storage encrypted at rest + retention/purge | **Real** — local AES-256-GCM; raw media TTL (24h) swept **hourly** by the arq worker cron + a k8s CronJob; only templates persist |
 | KMS/HSM-backed signing | Plug in — implement `KmsSigner` in `app/providers/signer.py` (`KYC_SIGNER=kms`); local Ed25519 is the dev fallback |
 | 1:N dedup search backend | **Real** — pluggable; linear scan (default) or **pgvector** ANN (`KYC_DEDUP_BACKEND=pgvector`), decision/thresholds identical |
 | S3-compatible object storage | Plug in — `S3Storage` (`KYC_STORAGE_BACKEND=s3`, needs `boto3`); local encrypted store is the dev fallback |

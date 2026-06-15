@@ -1,0 +1,26 @@
+# Retention purge: deletes raw media (passport images, selfies) whose TTL has
+# lapsed, so uploads don't outlive the retention window (KYC_MEDIA_RETENTION_SECONDS,
+# default 24h). Runs hourly here; the arq worker also runs the same sweep on a
+# cron, so either path keeps raw media short-lived.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kyc-retention-purge
+  namespace: kyc
+spec:
+  schedule: "0 * * * *" # top of every hour
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: purge
+              image: kyc-server:latest
+              command: ["python", "-m", "app.jobs.purge_media"]
+              envFrom:
+                - configMapRef: { name: kyc-config }
+                - secretRef: { name: kyc-secrets }

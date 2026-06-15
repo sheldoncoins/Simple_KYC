@@ -116,7 +116,7 @@ Endpoints marked 🔑 require a P2P client API key (`X-API-Key`); see
 | Passport MRZ OCR (read from image) | Plug in — `PassportEyeMrzReader` (`KYC_MRZ_READER=ocr`); the text reader drives dev/tests. Validation stays deterministic |
 | Liveness landmark extraction | Plug in MediaPipe / dlib (self-hosted) |
 | Face embedding (1:1 + 1:N) | Plug in `InsightFaceMatcher` (`KYC_FACE_MATCHER=insightface`); the deterministic mock drives dev/tests. Needs real selfie/passport images (UI, Phase 4) |
-| Dedup + matching background worker | Plug in — arq/Celery + Redis (Phase 3b); the pipeline is currently synchronous |
+| Dedup + matching background worker | **Real** — pluggable; inline (default) or **arq + Redis** worker (`KYC_TASK_QUEUE=arq`), client polls session status |
 
 ## Production hardening (before real money)
 

@@ -44,6 +44,11 @@ and build the UI. See `BUILD_PLAN.md` for the phased roadmap.
   The reject/review thresholds and twin handling in `services/dedup.py` are
   identical across backends -- only the nearest-neighbour search changes. New
   enrollments call `dedup.index_identity(...)` (a no-op for linear).
+- **Biometric processing is dispatchable** (`app/providers/task_queue.py`):
+  `InlineTaskQueue` (default, synchronous) or `ArqTaskQueue`
+  (`KYC_TASK_QUEUE=arq`, Redis + `app/worker.py`). Async path returns
+  `biometrics_submitted` and the client polls `GET /v1/sessions/{id}`. The
+  decision logic in `verification.submit_biometrics` is the same either way.
 
 ## The one idea everything protects
 
@@ -87,6 +92,7 @@ app/
   services/        mrz, liveness, dedup, risk, credentials, ledger, review,
                    revocation, media, retention, verification (orchestrator)
   jobs/            purge_media (retention deletion job)
+  worker.py        arq background worker (biometric decision off the request path)
 migrations/        Alembic env + versioned schema (owns the schema in prod)
 Dockerfile, docker-compose.yml   local dev stack: api + postgres
 tests/             pytest suite (conftest + _helpers shared)

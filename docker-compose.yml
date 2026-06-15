@@ -1,7 +1,8 @@
-# Local dev stack: Postgres + the API. Bring it up with:
+# Local dev stack: Postgres + Redis + the API + the background worker.
 #   docker compose up --build
-# The API waits for Postgres to be healthy, runs `alembic upgrade head`, then
-# serves on http://localhost:8000 (docs at /docs).
+# The API waits for Postgres, runs `alembic upgrade head`, then serves on
+# http://localhost:8000 (docs at /docs). Biometric decisions are dispatched to
+# the arq worker via Redis (KYC_TASK_QUEUE=arq); the client polls session status.
 services:
   db:
     image: postgres:16
@@ -19,10 +20,22 @@ services:
       timeout: 3s
       retries: 10
 
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     build: .
     environment:
       KYC_DATABASE_URL: postgresql+psycopg://kyc:kyc@db:5432/kyc
+      KYC_REDIS_URL: redis://redis:6379
+      KYC_TASK_QUEUE: arq
       KYC_LOG_FORMAT: console
       # Override these per-deployment; defaults here are dev-only.
       KYC_PII_SALT: dev-pii-salt-change-me
@@ -30,6 +43,22 @@ services:
       - "8000:8000"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: ["arq", "app.worker.WorkerSettings"]
+    environment:
+      KYC_DATABASE_URL: postgresql+psycopg://kyc:kyc@db:5432/kyc
+      KYC_REDIS_URL: redis://redis:6379
+      KYC_LOG_FORMAT: console
+      KYC_PII_SALT: dev-pii-salt-change-me
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:

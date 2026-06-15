@@ -11,3 +11,4 @@ structlog==26.1.0
 psycopg[binary]==3.3.4
 alembic==1.18.4
 python-multipart==0.0.32
+arq==0.28.0
